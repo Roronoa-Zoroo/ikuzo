@@ -8,6 +8,7 @@ export const colors = {
   cardPressed: "#202c47",
   danger: "#ef5350",
   overlay: "rgba(5, 9, 18, 0.72)",
+  ripple: "rgba(238, 242, 251, 0.12)",
   success: "#4caf7d",
   surface: "#131c30",
   text: "#eef2fb",

@@ -3,13 +3,15 @@ import { broadcastInLocalTime, estimateNextEpisode, formatCountdown } from "@iku
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import type { AnimeDetail } from "@ikuzo/anime/types";
 import { useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Alert, FlatList, StyleSheet, View } from "react-native";
 
 import { AnimeCarousel } from "@/components/anime-carousel";
 import { PosterTile } from "@/components/poster-tile";
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { UpdateSheet } from "@/components/update-sheet";
+import { watchNextEpisode } from "@/lib/episodes";
 import { capitalize, formatAirTime, formatCount, formatDateRange } from "@/lib/format";
 import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
@@ -95,19 +97,19 @@ const StatTile = ({
   label: string;
   onPress?: () => void;
 }) => (
-  <Pressable accessibilityRole="button" disabled={onPress === undefined} onPress={onPress} style={styles.statTile}>
+  <Touchable accessibilityRole="button" disabled={onPress === undefined} onPress={onPress} style={styles.statTile}>
     <Ionicons color={colors.text} name={icon} size={26} />
     <AppText numberOfLines={1} variant="label">
       {label}
     </AppText>
-  </Pressable>
+  </Touchable>
 );
 
 const ListControls = ({ anime }: { anime: AnimeDetail }) => {
   const entry = useEntry(anime);
   const key = entry?.key ?? animeKey(anime);
   const bookmarked = useLibrary((state) => state.bookmarks[animeKey(anime)] !== undefined);
-  const { increment, toggleBookmark } = useLibraryActions();
+  const { toggleBookmark } = useLibraryActions();
   const [editing, setEditing] = useState(false);
   const openEditor = () => {
     setEditing(true);
@@ -136,24 +138,24 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
         />
       </View>
       {entry === undefined ? (
-        <Pressable accessibilityRole="button" onPress={openEditor} style={styles.primaryButton}>
+        <Touchable accessibilityRole="button" onPress={openEditor} style={styles.primaryButton}>
           <AppText variant="label">ADD TO LIST</AppText>
-        </Pressable>
+        </Touchable>
       ) : (
         <>
-          <Pressable
+          <Touchable
             accessibilityLabel="Watched one more episode"
             accessibilityRole="button"
             onPress={() => {
-              increment(key);
+              watchNextEpisode(key);
             }}
             style={styles.primaryButton}
           >
             <AppText variant="label">+1</AppText>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={openEditor} style={styles.outlineButton}>
+          </Touchable>
+          <Touchable accessibilityRole="button" onPress={openEditor} style={styles.outlineButton}>
             <AppText variant="label">UPDATE</AppText>
-          </Pressable>
+          </Touchable>
         </>
       )}
       <UpdateSheet
@@ -206,7 +208,7 @@ const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
             </AppText>
           </>
         )}
-        <Pressable
+        <Touchable
           accessibilityRole="switch"
           accessibilityState={{ checked: notify }}
           onPress={() => {
@@ -216,7 +218,7 @@ const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
           <AppText color={colors.accent} variant="heading">
             {notify ? "Notifications on ✓" : "Get notified"}
           </AppText>
-        </Pressable>
+        </Touchable>
       </View>
     </Section>
   );
@@ -241,10 +243,10 @@ const LinkButton = ({
   label: string;
   onPress: () => void;
 }) => (
-  <Pressable accessibilityRole="link" onPress={onPress} style={styles.linkButton}>
+  <Touchable accessibilityRole="link" onPress={onPress} style={styles.linkButton}>
     <Ionicons color={colors.text} name={icon} size={20} />
     <AppText variant="label">{label}</AppText>
-  </Pressable>
+  </Touchable>
 );
 
 const localBroadcast = (anime: AnimeDetail): string | undefined => {
@@ -288,7 +290,7 @@ const Info = ({ anime }: { anime: AnimeDetail }) => {
           <InfoRow label="English" value={anime.titleEnglish} />
         </>
       ) : null}
-      <Pressable
+      <Touchable
         accessibilityRole="button"
         onPress={() => {
           setExpanded(!expanded);
@@ -297,7 +299,7 @@ const Info = ({ anime }: { anime: AnimeDetail }) => {
         <AppText color={colors.accent} variant="label">
           {expanded ? "Less information" : "More information"}
         </AppText>
-      </Pressable>
+      </Touchable>
       <View style={styles.links}>
         <LinkButton
           icon="logo-reddit"
@@ -331,7 +333,7 @@ const Synopsis = ({ text }: { text?: string }) => {
   const [expanded, setExpanded] = useState(false);
   return (
     <Section title="Synopsis">
-      <Pressable
+      <Touchable
         accessibilityHint="Shows the full synopsis"
         onPress={() => {
           setExpanded(!expanded);
@@ -340,7 +342,7 @@ const Synopsis = ({ text }: { text?: string }) => {
         <AppText color={colors.textMuted} numberOfLines={expanded ? undefined : SYNOPSIS_PREVIEW_LINES}>
           {text ?? "No synopsis yet."}
         </AppText>
-      </Pressable>
+      </Touchable>
     </Section>
   );
 };
@@ -402,7 +404,7 @@ const Related = ({ anime }: { anime: AnimeDetail }) => {
         <View key={group.relation} style={styles.relation}>
           <AppText variant="caption">{group.relation}</AppText>
           {group.items.map((item) => (
-            <Pressable
+            <Touchable
               accessibilityRole="link"
               key={item.id}
               onPress={() => {
@@ -412,7 +414,7 @@ const Related = ({ anime }: { anime: AnimeDetail }) => {
               <AppText color={colors.accent} variant="label">
                 {item.title}
               </AppText>
-            </Pressable>
+            </Touchable>
           ))}
         </View>
       ))}

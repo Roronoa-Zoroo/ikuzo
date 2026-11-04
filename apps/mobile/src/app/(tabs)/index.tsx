@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
+import Animated, { LinearTransition } from "react-native-reanimated";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
 import { OptionsSheet } from "@/components/options-sheet";
+import { PagerTabs } from "@/components/pager-tabs";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
-import { TabStrip } from "@/components/tab-strip";
 import { AppText } from "@/components/text";
 import { UpdateSheet } from "@/components/update-sheet";
+import { watchNextEpisode } from "@/lib/episodes";
+import { duration } from "@/lib/motion";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
 import { displayTitle, useLibrary, useLibraryActions, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
@@ -77,10 +80,49 @@ const useRefreshLibrary = () => {
   return { refresh, refreshing };
 };
 
+interface StatusListProps {
+  status: WatchStatus;
+  entries: LibraryEntry[];
+  refreshing: boolean;
+  onRefresh: () => void;
+  onMore: (entry: LibraryEntry) => void;
+}
+
+/** One status page. Rows slide into place when the order changes (250 ms, like RecyclerView). */
+const StatusList = ({ status, entries, refreshing, onRefresh, onMore }: StatusListProps) => (
+  <Animated.FlatList
+    contentContainerStyle={styles.list}
+    data={entries}
+    itemLayoutAnimation={LinearTransition.duration(duration.itemMove)}
+    keyExtractor={(entry) => entry.key}
+    ListEmptyComponent={
+      <EmptyState
+        icon="albums-outline"
+        message="Find shows in Discover or search, then add them to your list."
+        title={`Nothing in ${WATCH_STATUS_LABELS[status]}`}
+      />
+    }
+    onRefresh={onRefresh}
+    refreshing={refreshing}
+    renderItem={({ item }) => (
+      <AnimeRow
+        anime={item.anime}
+        onMore={() => {
+          onMore(item);
+        }}
+        onPress={() => {
+          openAnime(item.anime);
+        }}
+        progress={item.progress}
+      />
+    )}
+  />
+);
+
 const HomeScreen = () => {
   const entries = useLibrary((state) => state.entries);
   const language = useLibrary((state) => state.settings.titleLanguage);
-  const { increment, toggleBookmark, update, remove } = useLibraryActions();
+  const { toggleBookmark, update, remove } = useLibraryActions();
   const openMenu = useSideMenu((state) => state.setOpen);
   const [tab, setTab] = useState<WatchStatus>("watching");
   const [sort, setSort] = useState<SortKey>("updated");
@@ -99,19 +141,30 @@ const HomeScreen = () => {
     return result;
   }, [all]);
 
-  const visible = useMemo(() => {
+  const lists = useMemo(() => {
     const needle = filter?.trim().toLowerCase() ?? "";
-    return all
-      .filter((entry) => entry.status === tab)
-      .filter(
-        (entry) =>
-          needle === "" ||
-          [entry.anime.title, entry.anime.titleEnglish ?? "", ...entry.anime.synonyms].some((title) =>
-            title.toLowerCase().includes(needle)
-          )
-      )
-      .toSorted(sorters[sort]);
-  }, [all, filter, sort, tab]);
+    const matches = (entry: LibraryEntry): boolean =>
+      needle === "" ||
+      [entry.anime.title, entry.anime.titleEnglish ?? "", ...entry.anime.synonyms].some((title) =>
+        title.toLowerCase().includes(needle)
+      );
+    const result: Record<WatchStatus, LibraryEntry[]> = {
+      completed: [],
+      dropped: [],
+      onHold: [],
+      planned: [],
+      watching: [],
+    };
+    for (const entry of all) {
+      if (matches(entry)) {
+        result[entry.status].push(entry);
+      }
+    }
+    for (const status of WATCH_STATUSES) {
+      result[status].sort(sorters[sort]);
+    }
+    return result;
+  }, [all, filter, sort]);
 
   return (
     <View style={styles.screen}>
@@ -160,43 +213,25 @@ const HomeScreen = () => {
           value={filter}
         />
       )}
-      <TabStrip
+      <PagerTabs
         onChange={setTab}
+        renderPage={(status) => (
+          <StatusList
+            entries={lists[status]}
+            onMore={setMenuFor}
+            onRefresh={() => {
+              void refresh();
+            }}
+            refreshing={refreshing}
+            status={status}
+          />
+        )}
         tabs={WATCH_STATUSES.map((status) => ({
           key: status,
           label: `${WATCH_STATUS_LABELS[status]} (${counts[status]})`,
         }))}
         value={tab}
       />
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={visible}
-        keyExtractor={(entry) => entry.key}
-        ListEmptyComponent={
-          <EmptyState
-            icon="albums-outline"
-            message="Find shows in Discover or search, then add them to your list."
-            title={`Nothing in ${WATCH_STATUS_LABELS[tab]}`}
-          />
-        }
-        onRefresh={() => {
-          void refresh();
-        }}
-        refreshing={refreshing}
-        renderItem={({ item }) => (
-          <AnimeRow
-            anime={item.anime}
-            onMore={() => {
-              setMenuFor(item);
-            }}
-            onPress={() => {
-              openAnime(item.anime);
-            }}
-            progress={item.progress}
-          />
-        )}
-      />
-
       <OptionsSheet
         items={SORT_KEYS.map((key) => ({
           icon: sort === key ? "radio-button-on" : "radio-button-off",
@@ -227,7 +262,7 @@ const HomeScreen = () => {
                   icon: "add-circle-outline",
                   label: "+1 episode",
                   onPress: () => {
-                    increment(menuFor.key);
+                    watchNextEpisode(menuFor.key);
                   },
                   tone: "accent",
                 },

@@ -5,6 +5,7 @@ import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 
+import { ToastHost } from "@/components/toast";
 import { setupNotifications, syncReminders } from "@/lib/notifications";
 import { queryClient, useLibraryAiring } from "@/lib/queries";
 import { useLibrary } from "@/lib/store";
@@ -71,11 +72,13 @@ const RootLayout = () => (
     <TrackerSync />
     <Stack
       screenOptions={{
-        animation: "slide_from_right",
+        // Android's own screen transition, as anYme's activities used.
+        animation: "default",
         contentStyle: { backgroundColor: colors.background },
         headerShown: false,
       }}
     />
+    <ToastHost />
   </QueryClientProvider>
 );
 

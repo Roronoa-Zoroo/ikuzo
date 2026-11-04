@@ -2,7 +2,7 @@ import { TRACKER_LABELS, TRACKERS } from "@ikuzo/anime/trackers";
 import type { TrackerId } from "@ikuzo/anime/trackers";
 import { Image } from "expo-image";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from "react-native";
 
 import { useAccounts } from "@/lib/accounts";
 import { connect, disconnect, importPublicList, pull } from "@/lib/sync";
@@ -12,6 +12,7 @@ import { useNow } from "@/lib/use-now";
 import { ChipRow } from "./chips";
 import { Section } from "./section";
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 const MINUTE_MS = 60_000;
 const MINUTES_PER_HOUR = 60;
@@ -66,7 +67,7 @@ interface ButtonProps {
 }
 
 const Button = ({ label, onPress, primary = false, busy = false }: ButtonProps) => (
-  <Pressable
+  <Touchable
     accessibilityRole="button"
     accessibilityState={{ busy }}
     disabled={busy}
@@ -74,7 +75,7 @@ const Button = ({ label, onPress, primary = false, busy = false }: ButtonProps) 
     style={[styles.button, primary ? styles.primary : null]}
   >
     {busy ? <ActivityIndicator color={colors.text} /> : <AppText variant="label">{label}</AppText>}
-  </Pressable>
+  </Touchable>
 );
 
 const AccountRow = ({ tracker }: { tracker: TrackerId }) => {

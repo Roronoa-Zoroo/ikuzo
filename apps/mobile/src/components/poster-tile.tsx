@@ -1,10 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 
+import { duration, easing } from "@/lib/motion";
 import { colors, radius, spacing } from "@/lib/theme";
 
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 interface PosterTileProps {
   title: string;
@@ -18,39 +22,53 @@ interface PosterTileProps {
 
 const ASPECT_RATIO = 1.5;
 const DEFAULT_WIDTH = 120;
+const BOUNCE_SCALE = 1.35;
 
 const styles = StyleSheet.create({
-  heart: { position: "absolute", right: spacing.sm, top: spacing.sm },
+  heart: { borderRadius: radius.pill, padding: 2, position: "absolute", right: spacing.sm, top: spacing.sm },
   image: { backgroundColor: colors.surface, borderRadius: radius.sm },
   title: { marginTop: spacing.sm },
 });
 
+/** Heart that bounces when toggled (MaterialFavoriteButton's 300 ms bounce). */
+const FavoriteHeart = ({ active, onToggle }: { active: boolean; onToggle: () => void }) => {
+  const scale = useSharedValue(1);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Touchable
+      accessibilityLabel={active ? "Remove from favourites" : "Add to favourites"}
+      accessibilityRole="button"
+      borderless
+      hitSlop={8}
+      onPress={() => {
+        scale.set(
+          withSequence(
+            withTiming(BOUNCE_SCALE, { duration: duration.bounce / 2, easing: easing.standard }),
+            withTiming(1, { duration: duration.bounce / 2, easing: easing.overshoot })
+          )
+        );
+        void Haptics.selectionAsync();
+        onToggle();
+      }}
+      style={styles.heart}
+    >
+      <Animated.View style={style}>
+        <Ionicons color={active ? colors.danger : colors.text} name={active ? "heart" : "heart-outline"} size={26} />
+      </Animated.View>
+    </Touchable>
+  );
+};
+
 export const PosterTile = ({ title, subtitle, image, onPress, width = DEFAULT_WIDTH, favorite }: PosterTileProps) => (
-  <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onPress} style={{ width }}>
+  <Touchable accessibilityLabel={title} accessibilityRole="button" onPress={onPress} scaleOnPress style={{ width }}>
     <View>
       <Image
         contentFit="cover"
         source={image}
         style={[styles.image, { height: width * ASPECT_RATIO, width }]}
-        transition={150}
+        transition={duration.image}
       />
-      {favorite === undefined ? null : (
-        <Pressable
-          accessibilityLabel={favorite.active ? "Remove from favourites" : "Add to favourites"}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={() => {
-            favorite.onToggle();
-          }}
-          style={styles.heart}
-        >
-          <Ionicons
-            color={favorite.active ? colors.danger : colors.text}
-            name={favorite.active ? "heart" : "heart-outline"}
-            size={26}
-          />
-        </Pressable>
-      )}
+      {favorite === undefined ? null : <FavoriteHeart {...favorite} />}
     </View>
     <AppText numberOfLines={2} style={styles.title} variant="label">
       {title}
@@ -60,5 +78,5 @@ export const PosterTile = ({ title, subtitle, image, onPress, width = DEFAULT_WI
         {subtitle}
       </AppText>
     )}
-  </Pressable>
+  </Touchable>
 );

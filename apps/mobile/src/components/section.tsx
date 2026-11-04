@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { colors, radius, spacing } from "@/lib/theme";
 
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 interface SectionProps {
   title?: string;
@@ -38,11 +39,11 @@ export const Section = ({ title, actionLabel, onAction, children, flush = false 
       <View style={styles.header}>
         <AppText variant="heading">{title}</AppText>
         {actionLabel === undefined || onAction === undefined ? null : (
-          <Pressable accessibilityRole="link" hitSlop={8} onPress={onAction}>
+          <Touchable accessibilityRole="link" hitSlop={8} onPress={onAction}>
             <AppText style={styles.action} variant="label">
               {actionLabel}
             </AppText>
-          </Pressable>
+          </Touchable>
         )}
       </View>
     )}

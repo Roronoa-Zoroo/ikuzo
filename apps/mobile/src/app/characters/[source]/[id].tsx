@@ -1,10 +1,11 @@
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 
 import { Header } from "@/components/header";
 import { ErrorState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { openCharacter } from "@/lib/nav";
 import { useCharacters } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
@@ -64,7 +65,7 @@ const CharactersScreen = () => {
         renderItem={({ item }) => {
           const va = item.voiceActors.find((person) => person.language === "Japanese") ?? item.voiceActors[0];
           return (
-            <Pressable
+            <Touchable
               accessibilityRole="button"
               onPress={() => {
                 openCharacter(item.source ?? source, item.id);
@@ -91,7 +92,7 @@ const CharactersScreen = () => {
                   <Image source={va.image} style={styles.avatar} />
                 </>
               )}
-            </Pressable>
+            </Touchable>
           );
         }}
       />

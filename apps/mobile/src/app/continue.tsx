@@ -1,11 +1,13 @@
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
 import { EmptyState } from "@/components/states";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
+import { watchNextEpisode } from "@/lib/episodes";
 import { openAnime } from "@/lib/nav";
 import { useLibrary } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
@@ -24,7 +26,6 @@ const styles = StyleSheet.create({
 /** Shows you are watching, most recently touched first, with a one-tap +1. */
 const ContinueScreen = () => {
   const entries = useLibrary((state) => state.entries);
-  const increment = useLibrary((state) => state.increment);
   const watching = useMemo(
     () =>
       Object.values(entries)
@@ -58,16 +59,16 @@ const ContinueScreen = () => {
             }}
             progress={item.progress}
             trailing={
-              <Pressable
+              <Touchable
                 accessibilityLabel={`Watched episode ${item.progress + 1}`}
                 accessibilityRole="button"
                 onPress={() => {
-                  increment(item.key);
+                  watchNextEpisode(item.key);
                 }}
                 style={styles.plus}
               >
                 <AppText variant="label">+1</AppText>
-              </Pressable>
+              </Touchable>
             }
           />
         )}

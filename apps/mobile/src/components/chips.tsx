@@ -1,8 +1,9 @@
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 
 import { colors, radius, spacing } from "@/lib/theme";
 
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 export interface ChipOption<T> {
   value: T;
@@ -41,7 +42,7 @@ export const ChipRow = <T extends string | number>({ options, selected, onToggle
     {options.map((option) => {
       const active = selected.includes(option.value);
       return (
-        <Pressable
+        <Touchable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: active }}
           key={String(option.value)}
@@ -53,7 +54,7 @@ export const ChipRow = <T extends string | number>({ options, selected, onToggle
           <AppText color={active ? colors.text : colors.textMuted} variant="caption">
             {option.label}
           </AppText>
-        </Pressable>
+        </Touchable>
       );
     })}
   </ScrollView>

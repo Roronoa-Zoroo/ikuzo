@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
 
 import { SideMenu } from "@/components/side-menu";
+import { duration } from "@/lib/motion";
 import { colors } from "@/lib/theme";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -40,11 +41,14 @@ const TabsLayout = () => (
   <>
     <Tabs
       screenOptions={{
+        // anYme cross-faded between bottom tabs over 400 ms (xfade_in / xfade_out).
+        animation: "fade",
         headerShown: false,
         sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textSubtle,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        transitionSpec: { animation: "timing", config: { duration: duration.crossfade } },
       }}
     >
       {TABS.map((tab) => (

@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES, useEntry, entryKeyFor } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
+import { SlidePanel } from "./slide-panel";
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 interface UpdateSheetProps {
   anime: AnimeSummary;
@@ -19,7 +21,6 @@ interface UpdateSheetProps {
 const SCORES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: colors.overlay, flex: 1 },
   button: { alignItems: "center", borderRadius: radius.md, flex: 1, paddingVertical: spacing.md },
   buttons: { flexDirection: "row", gap: spacing.md, marginTop: spacing.md },
   chip: {
@@ -55,7 +56,7 @@ const styles = StyleSheet.create({
 });
 
 const Chip = ({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) => (
-  <Pressable
+  <Touchable
     accessibilityRole="radio"
     accessibilityState={{ selected: active }}
     onPress={onPress}
@@ -64,7 +65,7 @@ const Chip = ({ label, active, onPress }: { label: string; active: boolean; onPr
     <AppText color={active ? colors.text : colors.textMuted} variant="label">
       {label}
     </AppText>
-  </Pressable>
+  </Touchable>
 );
 
 const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
@@ -103,7 +104,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
 
       <AppText variant="caption">Episodes watched</AppText>
       <View style={styles.stepper}>
-        <Pressable
+        <Touchable
           accessibilityLabel="One episode less"
           onPress={() => {
             changeProgress(progress - 1);
@@ -111,7 +112,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           style={styles.stepButton}
         >
           <Ionicons color={colors.text} name="remove" size={22} />
-        </Pressable>
+        </Touchable>
         <TextInput
           accessibilityLabel="Episodes watched"
           inputMode="numeric"
@@ -122,7 +123,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           value={String(progress)}
         />
         <AppText variant="caption">/ {anime.episodes ?? "?"}</AppText>
-        <Pressable
+        <Touchable
           accessibilityLabel="One episode more"
           onPress={() => {
             changeProgress(progress + 1);
@@ -130,7 +131,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           style={styles.stepButton}
         >
           <Ionicons color={colors.text} name="add" size={22} />
-        </Pressable>
+        </Touchable>
       </View>
 
       <AppText variant="caption">Your score</AppText>
@@ -149,7 +150,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
 
       <View style={styles.buttons}>
         {entry === undefined ? null : (
-          <Pressable
+          <Touchable
             accessibilityRole="button"
             onPress={() => {
               remove(entryKeyFor(anime));
@@ -160,9 +161,9 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
             <AppText color={colors.danger} variant="label">
               Remove
             </AppText>
-          </Pressable>
+          </Touchable>
         )}
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           onPress={() => {
             save(anime, { progress, score, status });
@@ -171,7 +172,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           style={[styles.button, styles.primary]}
         >
           <AppText variant="label">Save</AppText>
-        </Pressable>
+        </Touchable>
       </View>
     </>
   );
@@ -181,13 +182,11 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
 export const UpdateSheet = ({ anime, visible, onClose }: UpdateSheetProps) => {
   const insets = useSafeAreaInsets();
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable accessibilityLabel="Close" onPress={onClose} style={styles.backdrop} />
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {visible ? <Form anime={anime} onClose={onClose} /> : null}
-        </ScrollView>
-      </View>
-    </Modal>
+    <SlidePanel edge="bottom" onClose={onClose} panelStyle={styles.sheet} visible={visible}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.lg }]}>
+        {/* The panel mounts on open, so the form starts from the saved values every time. */}
+        <Form anime={anime} onClose={onClose} />
+      </ScrollView>
+    </SlidePanel>
   );
 };

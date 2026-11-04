@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { colors, radius, spacing } from "@/lib/theme";
 
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 const styles = StyleSheet.create({
   button: {
@@ -29,9 +30,9 @@ export const ErrorState = ({ error, onRetry }: { error: unknown; onRetry?: () =>
       {error instanceof Error ? error.message : "Something went wrong"}
     </AppText>
     {onRetry === undefined ? null : (
-      <Pressable accessibilityRole="button" onPress={onRetry} style={styles.button}>
+      <Touchable accessibilityRole="button" onPress={onRetry} style={styles.button}>
         <AppText variant="label">Try again</AppText>
-      </Pressable>
+      </Touchable>
     )}
   </View>
 );

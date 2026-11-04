@@ -1,13 +1,14 @@
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { FlatList, ScrollView, StyleSheet, View } from "react-native";
 
 import { Header } from "@/components/header";
 import { PosterTile } from "@/components/poster-tile";
 import { Section } from "@/components/section";
 import { ErrorState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { openLink } from "@/lib/links";
 import { openAnime } from "@/lib/nav";
 import { useCharacter } from "@/lib/queries";
@@ -112,7 +113,7 @@ const CharacterScreen = () => {
 
         {data.about === undefined ? null : (
           <Section title="About">
-            <Pressable
+            <Touchable
               onPress={() => {
                 setExpanded(!expanded);
               }}
@@ -120,7 +121,7 @@ const CharacterScreen = () => {
               <AppText color={colors.textMuted} numberOfLines={expanded ? undefined : ABOUT_PREVIEW_LINES}>
                 {data.about}
               </AppText>
-            </Pressable>
+            </Touchable>
           </Section>
         )}
 

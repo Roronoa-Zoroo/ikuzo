@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AnimeDetail } from "@ikuzo/anime/types";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { Section } from "@/components/section";
 import { ErrorState } from "@/components/states";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { openLink, youtubeSearchUrl } from "@/lib/links";
 import { useAniDbEpisodes, useAnimeStats, useReviews, useThemes } from "@/lib/queries";
 import { anidb } from "@/lib/sources";
@@ -63,7 +64,7 @@ const ReviewCard = ({
         </AppText>
       </View>
       {revealed ? (
-        <Pressable
+        <Touchable
           onPress={() => {
             setExpanded(!expanded);
           }}
@@ -71,9 +72,9 @@ const ReviewCard = ({
           <AppText color={colors.textMuted} numberOfLines={expanded ? undefined : REVIEW_PREVIEW_LINES}>
             {review.body}
           </AppText>
-        </Pressable>
+        </Touchable>
       ) : (
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           onPress={() => {
             setRevealed(true);
@@ -82,7 +83,7 @@ const ReviewCard = ({
           <AppText color={colors.warning} variant="label">
             Contains spoilers, tap to read
           </AppText>
-        </Pressable>
+        </Touchable>
       )}
     </Section>
   );
@@ -115,7 +116,7 @@ export const ReviewsTab = ({ anime }: { anime: AnimeDetail }) => {
         <ReviewCard key={review.id} review={review} />
       ))}
       {reviews.hasNextPage ? (
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           disabled={reviews.isFetchingNextPage}
           onPress={() => {
@@ -128,7 +129,7 @@ export const ReviewsTab = ({ anime }: { anime: AnimeDetail }) => {
           ) : (
             <AppText variant="label">Load more reviews</AppText>
           )}
-        </Pressable>
+        </Touchable>
       ) : null}
     </View>
   );
@@ -187,7 +188,7 @@ const SongList = ({ title, songs }: { title: string; songs: string[] }) => (
   <Section title={title}>
     {songs.length === 0 ? <AppText variant="caption">None listed.</AppText> : null}
     {songs.map((song) => (
-      <Pressable
+      <Touchable
         accessibilityHint="Searches the song on YouTube"
         accessibilityRole="link"
         key={song}
@@ -198,7 +199,7 @@ const SongList = ({ title, songs }: { title: string; songs: string[] }) => (
       >
         <Ionicons color={colors.accent} name="musical-notes" size={18} />
         <AppText style={styles.songText}>{song}</AppText>
-      </Pressable>
+      </Touchable>
     ))}
   </Section>
 );

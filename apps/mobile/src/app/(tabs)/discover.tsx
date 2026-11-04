@@ -3,12 +3,13 @@ import type { BrowseList } from "@ikuzo/anime/types";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import { useMutation } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from "react-native";
 
 import { AnimeCarousel } from "@/components/anime-carousel";
 import { Header } from "@/components/header";
 import { useSideMenu } from "@/components/side-menu";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { capitalize, currentSeason } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { useBrowse, useSeasonal } from "@/lib/queries";
@@ -109,7 +110,7 @@ const DiscoverScreen = () => {
         <AppText style={styles.source} variant="caption">
           Showing {SOURCE_LABELS[source]} data · change it in the side menu
         </AppText>
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           disabled={random.isPending}
           onPress={() => {
@@ -123,7 +124,7 @@ const DiscoverScreen = () => {
             <Ionicons color={colors.text} name="shuffle" size={22} />
           )}
           <AppText variant="label">Don&apos;t know what to watch? Random anime</AppText>
-        </Pressable>
+        </Touchable>
         <SeasonRow />
         {LISTS.map((item) => (
           <BrowseRow key={item.list} {...item} />

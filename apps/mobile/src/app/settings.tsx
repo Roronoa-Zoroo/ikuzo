@@ -2,7 +2,7 @@ import { SOURCE_LABELS, SOURCES } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Alert, Pressable, ScrollView, Share, StyleSheet, Switch, View } from "react-native";
+import { Alert, ScrollView, Share, StyleSheet, Switch, View } from "react-native";
 
 import { AccountsSection } from "@/components/accounts-section";
 import { ChipRow } from "@/components/chips";
@@ -10,6 +10,7 @@ import type { ChipOption } from "@/components/chips";
 import { Header } from "@/components/header";
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { openLink } from "@/lib/links";
 import { anidb } from "@/lib/sources";
 import { createBackup, isBackup, useLibrary } from "@/lib/store";
@@ -55,7 +56,7 @@ const Button = ({
   onPress: () => void;
   tone?: "default" | "danger";
 }) => (
-  <Pressable
+  <Touchable
     accessibilityRole="button"
     onPress={onPress}
     style={[styles.button, tone === "danger" ? styles.danger : null]}
@@ -63,7 +64,7 @@ const Button = ({
     <AppText color={tone === "danger" ? colors.danger : colors.text} variant="label">
       {label}
     </AppText>
-  </Pressable>
+  </Touchable>
 );
 
 const exportBackup = async () => {

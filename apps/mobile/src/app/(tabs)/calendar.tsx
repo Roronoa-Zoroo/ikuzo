@@ -2,14 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { estimateNextEpisode, formatCountdown } from "@ikuzo/anime/airing";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { useMemo, useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Alert, FlatList, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
+import { PagerTabs } from "@/components/pager-tabs";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState, ErrorState, Loading } from "@/components/states";
-import { TabStrip } from "@/components/tab-strip";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { formatAirTime } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
@@ -23,6 +24,11 @@ type DayKey = (typeof DAYS)[number];
 type CalendarTab = "mine" | DayKey;
 
 const DAYS_FROM_MONDAY: readonly DayKey[] = [...DAYS.slice(1), "sunday"];
+
+const CALENDAR_TABS: { key: CalendarTab; label: string }[] = [
+  { key: "mine", label: "My shows" },
+  ...DAYS_FROM_MONDAY.map((day) => ({ key: day, label: day })),
+];
 
 const styles = StyleSheet.create({
   footer: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "space-between" },
@@ -50,7 +56,7 @@ const BellButton = ({ anime }: { anime: AnimeSummary }) => {
   };
 
   return (
-    <Pressable
+    <Touchable
       accessibilityLabel={active ? "Stop episode notifications" : "Notify me about new episodes"}
       accessibilityRole="switch"
       accessibilityState={{ checked: active }}
@@ -64,7 +70,7 @@ const BellButton = ({ anime }: { anime: AnimeSummary }) => {
         name={active ? "notifications" : "notifications-outline"}
         size={24}
       />
-    </Pressable>
+    </Touchable>
   );
 };
 
@@ -204,12 +210,12 @@ const CalendarScreen = () => {
         }}
         title="Calendar"
       />
-      <TabStrip
+      <PagerTabs
         onChange={setTab}
-        tabs={[{ key: "mine", label: "My shows" }, ...DAYS_FROM_MONDAY.map((day) => ({ key: day, label: day }))]}
+        renderPage={(page) => (page === "mine" ? <MyShows /> : <DaySchedule day={DAYS.indexOf(page)} />)}
+        tabs={CALENDAR_TABS}
         value={tab}
       />
-      {tab === "mine" ? <MyShows /> : <DaySchedule day={DAYS.indexOf(tab)} key={tab} />}
     </View>
   );
 };

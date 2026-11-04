@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AnimeDetail } from "@ikuzo/anime/types";
 import { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
 
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
+import { Touchable } from "@/components/touchable";
 import { useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
@@ -77,9 +78,9 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
             value={text}
           />
         </View>
-        <Pressable accessibilityRole="button" onPress={submit} style={styles.save}>
+        <Touchable accessibilityRole="button" onPress={submit} style={styles.save}>
           <AppText variant="label">Save note</AppText>
-        </Pressable>
+        </Touchable>
       </Section>
 
       {(entry?.notes ?? []).map((note) => (
@@ -89,7 +90,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
               {note.episode === undefined ? "General" : `Episode ${note.episode}`} ·{" "}
               {new Date(note.createdAt).toLocaleDateString()}
             </AppText>
-            <Pressable
+            <Touchable
               accessibilityLabel="Delete note"
               hitSlop={8}
               onPress={() => {
@@ -97,7 +98,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
               }}
             >
               <Ionicons color={colors.textMuted} name="trash-outline" size={18} />
-            </Pressable>
+            </Touchable>
           </View>
           <AppText>{note.text}</AppText>
         </Section>

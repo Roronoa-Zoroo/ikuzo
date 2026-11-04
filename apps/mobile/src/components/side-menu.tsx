@@ -1,6 +1,6 @@
 import { SOURCE_LABELS, SOURCES } from "@ikuzo/anime/types";
 import { router } from "expo-router";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { create } from "zustand";
 
 import { openLink } from "@/lib/links";
@@ -10,6 +10,7 @@ import { colors, radius, spacing } from "@/lib/theme";
 
 import { OptionsSheet } from "./options-sheet";
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 const REPOSITORY_URL = "https://github.com/Roronoa-Zoroo/ikuzo";
 
@@ -46,7 +47,7 @@ const SourceSwitch = () => {
       <AppText variant="caption">Browse with</AppText>
       <View accessibilityRole="radiogroup" style={styles.switch}>
         {SOURCES.map((value) => (
-          <Pressable
+          <Touchable
             accessibilityRole="radio"
             accessibilityState={{ selected: source === value }}
             key={value}
@@ -58,7 +59,7 @@ const SourceSwitch = () => {
             <AppText color={source === value ? colors.text : colors.textMuted} variant="label">
               {SOURCE_LABELS[value]}
             </AppText>
-          </Pressable>
+          </Touchable>
         ))}
       </View>
     </View>

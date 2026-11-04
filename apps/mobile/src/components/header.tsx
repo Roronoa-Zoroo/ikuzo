@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fontSize, spacing } from "@/lib/theme";
 
 import { AppText } from "./text";
+import { Touchable } from "./touchable";
 
 export interface HeaderAction {
   icon: keyof typeof Ionicons.glyphMap;
@@ -38,9 +39,16 @@ const styles = StyleSheet.create({
 });
 
 export const IconButton = ({ icon, label, onPress }: HeaderAction) => (
-  <Pressable accessibilityLabel={label} accessibilityRole="button" hitSlop={8} onPress={onPress} style={styles.icon}>
+  <Touchable
+    accessibilityLabel={label}
+    accessibilityRole="button"
+    borderless
+    hitSlop={8}
+    onPress={onPress}
+    style={styles.icon}
+  >
     <Ionicons color={colors.text} name={icon} size={24} />
-  </Pressable>
+  </Touchable>
 );
 
 const NO_ACTIONS: HeaderAction[] = [];
