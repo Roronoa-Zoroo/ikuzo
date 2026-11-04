@@ -1,0 +1,140 @@
+---
+/** A drawing of the app's Home screen, built from HTML so the site ships no third-party artwork. */
+const rows = [
+  { badge: "AIRING", hue: 215, progress: 7, title: "Your current favourite", total: 12 },
+  { badge: "NYA", hue: 28, progress: 0, title: "Next season's big sequel", total: 13 },
+  { badge: "AIRING", hue: 280, progress: 18, title: "The long-running one", total: 24 },
+  { badge: "", hue: 150, progress: 3, title: "A film you keep pausing", total: 1 },
+];
+---
+
+<div aria-label="Ikuzo's Home screen showing a watch list" class="phone" role="img">
+  <div class="bar">
+    <span>Home</span>
+  </div>
+  <div class="tabs">
+    <span class="active">WATCHING (4)</span>
+    <span>PLAN TO WATCH</span>
+  </div>
+  {rows.map((row) => (
+    <div class="row">
+      <div class="poster" style={`--hue: ${row.hue}`} />
+      <div class="body">
+        <strong>{row.title}</strong>
+        <div class="meta">
+          <span>
+            {Math.min(row.progress, row.total)}/{row.total}
+          </span>
+          {row.badge === "" ? null : <span class:list={["badge", row.badge === "NYA" && "nya"]}>{row.badge}</span>}
+        </div>
+        <div class="track">
+          <div class="fill" style={`width: ${(Math.min(row.progress, row.total) / row.total) * 100}%`} />
+        </div>
+      </div>
+    </div>
+  ))}
+  <div class="nav">
+    <span class="on">Home</span>
+    <span>Bookmarks</span>
+    <span>Discover</span>
+    <span>Calendar</span>
+    <span>Stats</span>
+  </div>
+</div>
+
+<style>
+  .phone {
+    width: min(100%, 320px);
+    aspect-ratio: 9 / 18;
+    background: var(--bg);
+    border: 10px solid #05080f;
+    border-radius: 36px;
+    padding: 18px 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 0.5);
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .bar {
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0 6px;
+  }
+  .tabs {
+    display: flex;
+    gap: 14px;
+    padding: 0 6px 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    font-size: 10px;
+  }
+  .tabs .active {
+    color: var(--text);
+    border-bottom: 2px solid var(--text);
+    padding-bottom: 4px;
+  }
+  .row {
+    display: flex;
+    background: var(--card);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .poster {
+    width: 64px;
+    height: 80px;
+    flex-shrink: 0;
+    background: linear-gradient(160deg, hsl(var(--hue) 70% 60%), hsl(calc(var(--hue) + 40) 60% 25%));
+  }
+  .body {
+    flex: 1;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+  }
+  .badge {
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 700;
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 6px;
+  }
+  .badge.nya {
+    background: var(--warning);
+  }
+  .track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    background: var(--accent);
+  }
+  .nav {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-around;
+    background: var(--surface);
+    margin-inline: -10px;
+    padding: 12px 0 16px;
+    color: var(--subtle);
+    font-size: 10px;
+  }
+  .nav .on {
+    color: var(--accent);
+  }
+</style>

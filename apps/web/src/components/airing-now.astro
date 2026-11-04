@@ -1,0 +1,84 @@
+---
+import { createAniListProvider } from "@ikuzo/anime/anilist";
+import type { AnimeSummary } from "@ikuzo/anime/types";
+
+/** Popular shows airing right now, fetched from AniList when the site is built. */
+const SHOWN = 12;
+
+let shows: AnimeSummary[] = [];
+try {
+  const page = await createAniListProvider().browse("airing");
+  shows = page.items.filter((show) => show.isAdult !== true).slice(0, SHOWN);
+} catch {
+  // The site still builds offline; the section is simply left out.
+  shows = [];
+}
+---
+
+{shows.length > 0 && (
+  <section aria-labelledby="airing-title" class="section airing">
+    <div class="container">
+      <h2 id="airing-title">Airing this season</h2>
+      <p class="lead">
+        A taste of what Ikuzo tracks for you, straight from AniList at build time. In the app every show has a countdown
+        to its next episode.
+      </p>
+      <ul class="strip">
+        {shows.map((show) => (
+          <li>
+            <img alt="" height="210" loading="lazy" src={show.image} width="150" />
+            <span class="title">{show.titleEnglish ?? show.title}</span>
+            {show.nextEpisode === undefined ? null : <span class="ep">Episode {show.nextEpisode.episode} next</span>}
+          </li>
+        ))}
+      </ul>
+      <p class="credit">Data and cover art from AniList.</p>
+    </div>
+  </section>
+)}
+
+<style>
+  .strip {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 12px;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 150px;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+  li {
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  img {
+    width: 150px;
+    height: 210px;
+    object-fit: cover;
+    border-radius: 10px;
+    background: var(--card);
+  }
+  .title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ep {
+    color: var(--accent);
+    font-size: 0.8rem;
+  }
+  .credit {
+    color: var(--subtle);
+    font-size: 0.8rem;
+    margin: 8px 0 0;
+  }
+</style>

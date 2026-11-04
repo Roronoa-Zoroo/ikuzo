@@ -1,80 +1,78 @@
-# starter-template
+# Ikuzo
 
-pnpm + Turborepo starter: Vite web app, Hono + tRPC API, Better Auth, MongoDB, Redis, Cloudflare R2, and Resend.
+**行くぞ, "let's go!"** Ikuzo is a free, open-source anime tracker for Android and iOS. It needs no account, has no ads and does no tracking.
 
-| Package            | Role                                                  |
-| ------------------ | ----------------------------------------------------- |
-| `apps/web`         | Vite + TanStack Router client                         |
-| `apps/api`         | Hono + tRPC server                                    |
-| `packages/ui`      | Shared shadcn/ui components                           |
-| `packages/db`      | MongoDB + Papr models                                 |
-| `packages/runtime` | Logging, boot, HTTP lifecycle                         |
-| `packages/email`   | React Email templates and a Resend mailer             |
-| `packages/storage` | Signed upload/download URLs for S3, R2, or Azure Blob |
+It keeps your watch lists, counts down to every next episode, notifies you when one airs and helps you find what to watch next, using data from **AniList**, **MyAnimeList** (through [Jikan](https://jikan.moe)) and **AniDB**.
 
-Needs **Node 24+**, **pnpm**, **Docker**, and [Portless](https://github.com/vercel-labs/portless) (`pnpm add -g portless`).
+## Features
 
-## Run locally
+- **Lists:** Watching, Plan to watch, On hold, Completed and Dropped, with +1 episode, scores, filter and sort
+- **Calendar:** your airing shows with live countdowns, plus the full weekly schedule
+- **Episode notifications:** local reminders when new episodes air, with no server involved
+- **Discover:** the current season, airing now, most popular, upcoming, top rated, top movies and a random pick
+- **Search:** by title, or filtered by format, status, year and genre
+- **Anime pages:** info, genres, synopsis, characters and voice actors, related shows, recommendations, reviews, community stats, opening and ending songs, and AniDB episode lists
+- **Personal extras:** notes per episode, bookmarks, favourite shows and characters, "continue watching", and recommendations based on your list
+- **Stats:** episodes watched, time spent, your score distribution and top genres
+- **Backup:** export your library as JSON and restore it on another phone
+
+## Data sources
+
+| Source | Used for |
+| --- | --- |
+| AniList (default) | Browsing and details, plus exact next-episode times for every show, including MyAnimeList entries matched by ID |
+| MyAnimeList via Jikan | Browsing and details, plus opening and ending songs |
+| AniDB (optional) | Episode titles and air dates |
+| [ARM](https://arm.haglund.dev) | Matching the same show across AniList, MyAnimeList and AniDB |
+
+You choose AniList or MyAnimeList for browsing in the side menu. Everything you track is stored on the device in SQLite.
+
+### Enabling AniDB
+
+AniDB requires every app to register a client and bans clients that send too many requests:
+
+1. Register an "HTTP API" client at <https://anidb.net/software/add>.
+2. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and set `EXPO_PUBLIC_ANIDB_CLIENT` and `EXPO_PUBLIC_ANIDB_CLIENT_VERSION`.
+
+Ikuzo then waits at least 2.5 seconds between AniDB requests and caches each show for 24 hours. AniDB's API only works over plain HTTP, so a config plugin allows unencrypted traffic to `api.anidb.net` and nowhere else.
+
+## Repository layout
+
+| Path | What it is |
+| --- | --- |
+| `apps/mobile` | Expo SDK 58 app (Expo Router, TanStack Query, zustand) |
+| `apps/web` | Astro 7 website |
+| `packages/anime` | `@ikuzo/anime`: typed clients for Jikan, AniList and AniDB that return the same data shapes, plus ID mapping and airing-time maths |
+| `packages/typescript-config` | Shared TypeScript config |
+
+## Development
+
+You need **Node 24+** and **pnpm** (`corepack enable`).
 
 ```bash
-docker compose up -d
-cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
 pnpm install
-pnpm dev
+pnpm --filter mobile start      # Expo dev server: press a for Android, i for iOS, w for web
+pnpm --filter web dev           # website on http://localhost:4321/ikuzo
 ```
 
-Set `BETTER_AUTH_SECRET` in `apps/api/.env` to a string of at least 32 characters. Fill in the `R2_*` values for attachments and `RESEND_API_KEY` / `EMAIL_FROM` for mail.
+Notifications and other native modules need a [development build](https://docs.expo.dev/develop/development-builds/introduction/) (`pnpm --filter mobile exec expo run:android`) rather than Expo Go.
 
-- Web: https://starter.localhost
-- API: https://api.starter.localhost
-
-Email previews: `pnpm run email:preview`
-
-## Rename the product
-
-1. Update the copy in `apps/web/src/lib/site.ts`.
-2. Replace files in `apps/web/public/` (logo, favicons, Open Graph image, manifest).
-3. Match the HTML fallback metadata in `apps/web/index.html`.
-4. Update the product name in email templates (`packages/email/src/layout.tsx` and `packages/email/src/emails/`).
-5. Change the Portless names in `apps/web/package.json` and `apps/api/package.json` (`starter` / `api.starter`), then update `VITE_APP_URL`, `VITE_API_URL`, `BETTER_AUTH_URL`, and `WEB_ORIGIN` to the new hosts.
-
-## Add a tRPC module
-
-1. Add a Papr model in `packages/db` if the module needs new collections.
-2. Create `apps/api/src/modules/<name>/router.ts` using `protectedProcedure` or `publicProcedure` from `apps/api/src/trpc.ts`.
-3. Mount it on `appRouter` in `apps/api/src/router.ts`.
-4. Call it from the web app with `useTRPC()` (`apps/web/src/lib/trpc.ts`). Types come from the `api` workspace package.
-
-## Add a route
-
-Add a file under `apps/web/src/routes/`. TanStack Router generates `routeTree.gen.ts` in dev. Put authenticated screens under `apps/web/src/routes/_authenticated/`.
-
-## Object storage
-
-Todo attachments upload to Cloudflare R2 with signed URLs. Configure bucket CORS for `WEB_ORIGIN`. `packages/storage` also supports AWS S3 and Azure Blob if you swap the client in `apps/api/src/lib/object-storage.ts`.
-
-## Email
-
-Transactional mail goes through Resend. Templates live in `packages/email`; the API sends them with `createMailer` in `apps/api/src/lib/mail.ts`. Better Auth uses that for password reset.
-
-Set `RESEND_API_KEY` and `EMAIL_FROM` in `apps/api/.env`. Until you verify a domain, `Starter <beth.t@example.com>` works and Resend only delivers to the email on your Resend account.
-
-Preview templates: `pnpm --filter @repo/email preview`
-
-## Portless
-
-HTTPS URLs on `*.localhost` come from Portless. If they fail:
-
-- Run `portless doctor`, then `portless trust` if the browser warns about the certificate.
-- Start the proxy with `portless proxy start` if nothing is listening on 443.
-- On Windows, bind to 443 may need an elevated terminal the first time.
-- Bypass the proxy with `PORTLESS=0` only for debugging; the checked-in `.env` hosts expect Portless names.
-
-## Checks
+### Checks
 
 ```bash
-pnpm check
-pnpm check-types
-pnpm build
+pnpm check         # oxlint + oxfmt through Ultracite
+pnpm fix           # auto-fix lint and formatting
+pnpm check-types   # TypeScript (tsc and astro check)
+pnpm build         # builds the website
+pnpm --filter mobile export   # bundles the Android app with Metro
 ```
+
+Linting and formatting use [oxc](https://oxc.rs) (oxlint with type-aware rules, and oxfmt, which also formats `.astro` files) set up by [Ultracite](https://www.ultracite.ai). Lefthook runs the fixer and the type check before each commit, and the build before each push.
+
+## Contributing
+
+Issues and pull requests are welcome. Run `pnpm fix` and `pnpm check-types` before you open a PR.
+
+## Disclaimer
+
+Ikuzo is an independent project and is not affiliated with AniList, MyAnimeList, Jikan or AniDB. Anime titles and artwork belong to their respective owners.

@@ -1,0 +1,20 @@
+{
+  "name": "web",
+  "private": true,
+  "description": "Ikuzo website",
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "check-types": "astro check",
+    "dev": "astro dev",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@ikuzo/anime": "workspace:*",
+    "astro": "^7.4.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,274 @@
+---
+import AiringNow from "../components/airing-now.astro";
+import Phone from "../components/phone.astro";
+import Base from "../layouts/base.astro";
+
+const REPOSITORY = "https://github.com/Roronoa-Zoroo/ikuzo";
+
+const features = [
+  { text: "Watching, plan to watch, on hold, completed and dropped, with one-tap +1 episode.", title: "Your lists" },
+  {
+    text: "Countdowns to every next episode and a weekly schedule for the shows you follow.",
+    title: "Airing calendar",
+  },
+  { text: "Local notifications when a new episode airs. No account, no server.", title: "Episode alerts" },
+  { text: "Seasonal charts, airing now, most popular, upcoming, top rated and top movies.", title: "Discover" },
+  {
+    text: "Filter by format, status, year and genre, or let the random button pick for you.",
+    title: "Search & random",
+  },
+  {
+    text: "Characters, voice actors, related shows, recommendations, reviews and community stats.",
+    title: "Everything about a show",
+  },
+  {
+    text: "Write notes per episode, bookmark shows and keep a list of favourite characters.",
+    title: "Notes & favourites",
+  },
+  { text: "Opening and ending themes, and episode titles from AniDB.", title: "Songs & episodes" },
+  { text: "Episodes watched, time spent, score distribution and your top genres.", title: "Stats" },
+];
+
+const sources = [
+  { name: "AniList", text: "Default source. Exact next-episode times, rich metadata, characters and reviews." },
+  { name: "MyAnimeList", text: "Through the open Jikan API. Scores, reviews, statistics and opening/ending songs." },
+  { name: "AniDB", text: "Optional. Detailed episode lists with titles and air dates, linked through shared IDs." },
+];
+
+const promises = [
+  "No account needed",
+  "No ads",
+  "No analytics or tracking",
+  "Your list stays on your phone",
+  "Export a backup any time",
+  "Free and open source",
+];
+---
+
+<Base
+  description="Ikuzo is a free, open-source anime tracker for Android and iOS. Track what you watch, get notified about new episodes and discover new shows with AniList, MyAnimeList and AniDB data."
+  title="Ikuzo · open-source anime tracker"
+>
+  <header class="nav container">
+    <a aria-label="Ikuzo home" class="logo" href="#top">
+      Ikuzo
+    </a>
+    <nav aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#sources">Sources</a>
+      <a href="#privacy">Privacy</a>
+      <a href={REPOSITORY} rel="noopener noreferrer" target="_blank">
+        GitHub
+      </a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero container">
+      <div class="copy">
+        <p class="eyebrow">行くぞ · "let's go!"</p>
+        <h1>
+          Track anime.
+          <br />
+          Never miss an episode.
+        </h1>
+        <p class="lead">
+          Ikuzo is a free, open-source anime tracker. Keep your lists, follow airing shows with live countdowns and find
+          what to watch next, with data from AniList, MyAnimeList and AniDB.
+        </p>
+        <div class="actions">
+          <a class="button primary" href={`${REPOSITORY}/releases`} rel="noopener noreferrer" target="_blank">
+            Download for Android
+          </a>
+          <a class="button" href={REPOSITORY} rel="noopener noreferrer" target="_blank">
+            View the source
+          </a>
+        </div>
+        <p class="note">Android and iOS. No account, no ads, no tracking.</p>
+      </div>
+      <Phone />
+    </section>
+
+    <AiringNow />
+
+    <section aria-labelledby="features-title" class="section" id="features">
+      <div class="container">
+        <h2 id="features-title">Everything a tracker should do</h2>
+        <p class="lead">Built for people who watch a lot of anime and want one calm place to keep up with it.</p>
+        <div class="grid">
+          {features.map((feature) => (
+            <article class="card">
+              <h3>{feature.title}</h3>
+              <p>{feature.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="sources-title" class="section alt" id="sources">
+      <div class="container">
+        <h2 id="sources-title">Three databases, one app</h2>
+        <p class="lead">Pick AniList or MyAnimeList for browsing. Ikuzo combines them where each one is strongest.</p>
+        <div class="grid">
+          {sources.map((source) => (
+            <article class="card">
+              <h3>{source.name}</h3>
+              <p>{source.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="privacy-title" class="section" id="privacy">
+      <div class="privacy container">
+        <div>
+          <h2 id="privacy-title">Private by design</h2>
+          <p class="lead">
+            Ikuzo has no backend. The app talks directly to the public anime databases, and your list, notes and scores
+            never leave your device unless you export them.
+          </p>
+        </div>
+        <ul>
+          {promises.map((promise) => (
+            <li>{promise}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="contribute-title" class="section alt">
+      <div class="contribute container">
+        <h2 id="contribute-title">Made in the open</h2>
+        <p class="lead">
+          Ikuzo is built with Expo and React Native. Ideas, bug reports and pull requests are all welcome.
+        </p>
+        <div class="actions">
+          <a class="button primary" href={REPOSITORY} rel="noopener noreferrer" target="_blank">
+            Star on GitHub
+          </a>
+          <a class="button" href={`${REPOSITORY}/issues`} rel="noopener noreferrer" target="_blank">
+            Suggest a feature
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer container">
+    <p>
+      Ikuzo is an independent project and is not affiliated with AniList, MyAnimeList, Jikan or AniDB. Anime titles and
+      artwork belong to their respective owners.
+    </p>
+  </footer>
+</Base>
+
+<style>
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-block: 20px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .logo {
+    font-weight: 800;
+    font-size: 1.4rem;
+    text-decoration: none;
+  }
+  nav {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+  nav a:hover {
+    color: var(--text);
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    align-items: center;
+    gap: 48px;
+    padding-block: 48px 72px;
+  }
+  .hero :global(.phone) {
+    justify-self: center;
+  }
+  .eyebrow {
+    color: var(--accent);
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-size: clamp(2.2rem, 6vw, 3.6rem);
+    line-height: 1.1;
+    margin: 0 0 20px;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .note {
+    color: var(--subtle);
+    font-size: 0.9rem;
+    margin-top: 16px;
+  }
+  .alt {
+    background: var(--surface);
+  }
+  .privacy {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 32px;
+    align-items: center;
+  }
+  .privacy ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .privacy li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+  }
+  .privacy li::before {
+    content: "✓";
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 10px;
+  }
+  .contribute {
+    text-align: center;
+  }
+  .contribute .lead {
+    margin-inline: auto;
+  }
+  .contribute .actions {
+    justify-content: center;
+  }
+  .footer {
+    padding-block: 32px 48px;
+    color: var(--subtle);
+    font-size: 0.85rem;
+  }
+  @media (width < 800px) {
+    .hero,
+    .privacy {
+      grid-template-columns: 1fr;
+    }
+    .hero {
+      padding-top: 16px;
+    }
+  }
+</style>
