@@ -1,7 +1,7 @@
 import { AuthError } from "./auth-error";
 import { HttpError } from "./errors";
 import { createRateLimiter, fetchWithRetry, readJson } from "./http";
-import type { ListStatus, ListUpdate, RemoteEntry, TrackerAccount, TrackerSession } from "./trackers";
+import type { ListChange, ListStatus, RemoteEntry, TrackerAccount, TrackerSession } from "./trackers";
 import type { AiringStatus, AnimeSummary, MediaFormat, Season } from "./types";
 
 const API = "https://api.myanimelist.net/v2";
@@ -13,6 +13,7 @@ const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const HTTP_NOT_FOUND = 404;
 const HTTP_UNAUTHORIZED = 401;
+const HTTP_BAD_REQUEST = 400;
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 const LIST_FIELDS = [
@@ -204,8 +205,21 @@ export const exchangeMalCode = async (
     Date.now()
   );
 
-export const refreshMalSession = async (clientId: string, refreshToken: string): Promise<TrackerSession> =>
-  await requestToken({ client_id: clientId, grant_type: "refresh_token", refresh_token: refreshToken }, Date.now());
+/** Renews the sign-in. A refused refresh token means the user has to sign in again (AuthError). */
+export const refreshMalSession = async (clientId: string, refreshToken: string): Promise<TrackerSession> => {
+  try {
+    return await requestToken(
+      { client_id: clientId, grant_type: "refresh_token", refresh_token: refreshToken },
+      Date.now()
+    );
+  } catch (error) {
+    // MyAnimeList answers 400 invalid_grant or 401 for expired and revoked refresh tokens.
+    if (error instanceof HttpError && (error.status === HTTP_BAD_REQUEST || error.status === HTTP_UNAUTHORIZED)) {
+      throw new AuthError("MyAnimeList");
+    }
+    throw error;
+  }
+};
 
 // ── API client ──────────────────────────────────────────────────────────────
 
@@ -278,13 +292,19 @@ export const createMalAccount = (clientId: string, accessToken?: string): Tracke
       }
     },
 
-    async save(animeId, update: ListUpdate) {
+    async save(animeId, change: ListChange) {
+      const body = new URLSearchParams();
+      if (change.status !== undefined) {
+        body.set("status", TO_MAL[change.status]);
+      }
+      if (change.progress !== undefined) {
+        body.set("num_watched_episodes", String(change.progress));
+      }
+      if (change.score !== undefined) {
+        body.set("score", String(change.score));
+      }
       await call(`${API}/anime/${animeId}/my_list_status`, {
-        body: new URLSearchParams({
-          num_watched_episodes: String(update.progress),
-          score: String(update.score),
-          status: TO_MAL[update.status],
-        }).toString(),
+        body: body.toString(),
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         method: "PATCH",
       });

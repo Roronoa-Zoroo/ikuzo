@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 
-import { createRateLimiter, parseJson } from "./http";
+import { createRateLimiter, fetchWithTimeout, parseJson } from "./http";
 
 /**
  * AniDB HTTP API client (episode data only).
@@ -154,12 +154,10 @@ export const createAniDbClient = (config: AniDbConfig) => {
 
   const fetchXml = async (aid: number): Promise<string> => {
     const key = `anidb:anime:${aid}`;
-    const cached = await config.cache?.get(key);
-    if (cached !== null && cached !== undefined) {
-      const { at, xml } = parseJson<{ at: number; xml: string }>(cached);
-      if (Date.now() - at < CACHE_TTL_MS) {
-        return xml;
-      }
+    const raw = await config.cache?.get(key);
+    const cached = raw === null || raw === undefined ? undefined : parseJson<{ at: number; xml: string }>(raw);
+    if (cached !== undefined && Date.now() - cached.at < CACHE_TTL_MS) {
+      return cached.xml;
     }
     const params = new URLSearchParams({
       aid: String(aid),
@@ -168,18 +166,26 @@ export const createAniDbClient = (config: AniDbConfig) => {
       protover: String(PROTOCOL_VERSION),
       request: "anime",
     });
-    const xml = await limit(async () => {
-      // No retries: AniDB bans clients that hammer it.
-      const response = await fetch(`${ENDPOINT}?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(`AniDB request failed with status ${response.status}`);
+    try {
+      const xml = await limit(async () => {
+        // No retries: AniDB bans clients that hammer it.
+        const response = await fetchWithTimeout(`${ENDPOINT}?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error(`AniDB request failed with status ${response.status}`);
+        }
+        return await response.text();
+      });
+      // Only cache valid answers, never errors such as "banned".
+      parseAnimeXml(xml);
+      await config.cache?.set(key, JSON.stringify({ at: Date.now(), xml }));
+      return xml;
+    } catch (error) {
+      // An old episode list beats an error screen when AniDB is unreachable.
+      if (cached !== undefined) {
+        return cached.xml;
       }
-      return await response.text();
-    });
-    // Only cache valid answers, never errors such as "banned".
-    parseAnimeXml(xml);
-    await config.cache?.set(key, JSON.stringify({ at: Date.now(), xml }));
-    return xml;
+      throw error;
+    }
   };
 
   return {

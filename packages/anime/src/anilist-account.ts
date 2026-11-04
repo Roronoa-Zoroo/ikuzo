@@ -1,6 +1,6 @@
 import { aniListRequest, SUMMARY_FIELDS, toSummary } from "./anilist";
 import type { AniListMedia } from "./anilist";
-import type { ListStatus, ListUpdate, RemoteEntry, TrackerAccount, TrackerSession } from "./trackers";
+import type { ListChange, ListStatus, RemoteEntry, TrackerAccount, TrackerSession } from "./trackers";
 
 const AUTHORIZE_URL = "https://anilist.co/api/v2/oauth/authorize";
 const MS_PER_SECOND = 1000;
@@ -129,17 +129,18 @@ export const createAniListAccount = (accessToken?: string): TrackerAccount => {
       await request("mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", { id: listEntryId });
     },
 
-    async save(animeId, update: ListUpdate) {
+    async save(animeId, change: ListChange) {
+      // Fields left out of the variables are not touched by AniList (undefined is dropped from the JSON).
       await request(
         `mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int) {
           SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, scoreRaw: $scoreRaw) { id }
         }`,
         {
           mediaId: animeId,
-          progress: update.progress,
+          progress: change.progress,
           // scoreRaw is 0–100 whatever score format the user picked on AniList.
-          scoreRaw: update.score * SCORE_RAW_SCALE,
-          status: TO_ANILIST[update.status],
+          scoreRaw: change.score === undefined ? undefined : change.score * SCORE_RAW_SCALE,
+          status: change.status === undefined ? undefined : TO_ANILIST[change.status],
         }
       );
     },

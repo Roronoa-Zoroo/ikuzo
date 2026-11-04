@@ -19,7 +19,6 @@ import type {
 } from "./types";
 
 const BASE_URL = "https://api.jikan.moe/v4";
-/** Jikan allows 3 requests/second and 60/minute. */
 /** Jikan allows 3 requests/second but only 60/minute; staying at 1/second avoids 429 storms. */
 const REQUEST_INTERVAL_MS = 1000;
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
@@ -450,6 +449,8 @@ export const createJikanProvider = (): AnimeProvider => {
       const hasQuery = (params.query ?? "") !== "";
       const sort = SORTS[params.sort ?? (hasQuery ? "popularity" : "score")];
       const result = await get<JikanList<JikanAnime>>("/anime", {
+        // Both ends, or Jikan returns everything from that year onwards.
+        end_date: params.year === undefined ? undefined : `${params.year}-12-31`,
         genres: genreIds.length > 0 ? genreIds.join(",") : undefined,
         order_by: sort.order_by,
         page,

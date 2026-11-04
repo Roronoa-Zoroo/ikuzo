@@ -19,6 +19,9 @@ export interface ListUpdate {
   score: number;
 }
 
+/** Only the fields that changed: services keep whatever is not sent (an AniList 85/100 score, a rewatch). */
+export type ListChange = Partial<ListUpdate>;
+
 export interface RemoteEntry extends ListUpdate {
   anime: AnimeSummary;
   /** Epoch milliseconds of the last change on the service */
@@ -44,6 +47,7 @@ export interface TrackerAccount {
   profile: () => Promise<TrackerProfile>;
   /** The whole anime list. Without a session only public lists of `userName` can be read. */
   list: (userName?: string) => Promise<RemoteEntry[]>;
-  save: (animeId: number, update: ListUpdate) => Promise<void>;
+  /** Adds the show to the list, or changes only the given fields of an existing entry. */
+  save: (animeId: number, change: ListChange) => Promise<void>;
   remove: (animeId: number) => Promise<void>;
 }

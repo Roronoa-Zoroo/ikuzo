@@ -60,11 +60,11 @@ query ($id: Int) {
 
 const PAGE_QUERY = `
 query ($page: Int, $perPage: Int, $search: String, $sort: [MediaSort], $format: MediaFormat, $status: MediaStatus,
-       $genres: [String], $season: MediaSeason, $seasonYear: Int, $idMalIn: [Int]) {
+       $genres: [String], $season: MediaSeason, $seasonYear: Int, $idMalIn: [Int], $idIn: [Int]) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage currentPage }
     media(type: ANIME, isAdult: false, search: $search, sort: $sort, format: $format, status: $status,
-          genre_in: $genres, season: $season, seasonYear: $seasonYear, idMal_in: $idMalIn) {
+          genre_in: $genres, season: $season, seasonYear: $seasonYear, idMal_in: $idMalIn, id_in: $idIn) {
       ${SUMMARY_FIELDS}
     }
   }
@@ -318,10 +318,33 @@ export const aniListRequest = async <T>(
 export type AniListClient = AnimeProvider & {
   /** Batch lookup by MyAnimeList id — used to get exact next-episode times for any show. */
   byMalIds: (malIds: number[]) => Promise<AnimeSummary[]>;
+  /** Batch lookup by AniList id, for shows that have no MyAnimeList id. */
+  byIds: (ids: number[]) => Promise<AnimeSummary[]>;
 };
+
+/** Most ids per batch request (AniList pages hold up to 50 items). */
+const BATCH_SIZE = PER_PAGE * 2;
 
 export const createAniListProvider = (): AniListClient => {
   const query = aniListRequest;
+
+  /** Looks shows up in batches by `variable` (idMalIn or idIn), one request at a time. */
+  const batched = async (variable: "idMalIn" | "idIn", ids: number[]): Promise<AnimeSummary[]> => {
+    const results: AnimeSummary[] = [];
+    for (let start = 0; start < ids.length; start += BATCH_SIZE) {
+      const chunk = ids.slice(start, start + BATCH_SIZE);
+      // Chunks are sent one by one to respect the rate limit.
+      const variables = new Map<string, unknown>([
+        ["page", 1],
+        ["perPage", chunk.length],
+        [variable, chunk],
+      ]);
+      // oxlint-disable-next-line no-await-in-loop
+      const data = await query<AniListPage>(PAGE_QUERY, Object.fromEntries(variables));
+      results.push(...data.Page.media.map(toSummary));
+    }
+    return results;
+  };
 
   const page = async (variables: Record<string, unknown>): Promise<Paged<AnimeSummary>> => {
     const data = await query<AniListPage>(PAGE_QUERY, { perPage: PER_PAGE, ...variables });
@@ -344,19 +367,12 @@ export const createAniListProvider = (): AniListClient => {
       return await page({ ...variables[list], page: pageNumber });
     },
 
+    async byIds(ids) {
+      return await batched("idIn", ids);
+    },
+
     async byMalIds(malIds) {
-      if (malIds.length === 0) {
-        return [];
-      }
-      const results: AnimeSummary[] = [];
-      for (let start = 0; start < malIds.length; start += PER_PAGE * 2) {
-        const chunk = malIds.slice(start, start + PER_PAGE * 2);
-        // Chunks are sent one by one to respect the rate limit.
-        // oxlint-disable-next-line no-await-in-loop
-        const data = await query<AniListPage>(PAGE_QUERY, { idMalIn: chunk, page: 1, perPage: chunk.length });
-        results.push(...data.Page.media.map(toSummary));
-      }
-      return results;
+      return await batched("idMalIn", malIds);
     },
 
     async genres() {

@@ -10,7 +10,8 @@
     "dev": "turbo watch dev",
     "fix": "ultracite fix",
     "gen": "turbo gen",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@astrojs/compiler-rs": "^0.5.2",

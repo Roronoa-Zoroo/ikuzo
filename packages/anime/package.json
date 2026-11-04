@@ -18,15 +18,18 @@
     "./mal-account": "./src/mal-account.ts",
     "./errors": "./src/errors.ts",
     "./auth-error": "./src/auth-error.ts",
-    "./mal": "./src/mal.ts"
+    "./mal": "./src/mal.ts",
+    "./sync-plan": "./src/sync-plan.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.2"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
   }
 }

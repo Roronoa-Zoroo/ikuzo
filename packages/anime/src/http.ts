@@ -2,6 +2,8 @@ import { HttpError } from "./errors";
 
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_MS = 2000;
+/** A long Retry-After would freeze the screen; give up and let the caller retry later instead. */
+const MAX_RETRY_MS = 10_000;
 const MS_PER_SECOND = 1000;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_SERVER_ERROR = 500;
@@ -53,19 +55,18 @@ export const createRateLimiter = (intervalMs: number) => {
   };
 };
 
-const retryDelay = (response: Response, attempt: number): number => {
+/** Milliseconds to wait before the next attempt, or undefined when the server asks for too long. */
+const retryDelay = (response: Response, attempt: number): number | undefined => {
   const header = Number(response.headers.get("retry-after"));
-  if (Number.isFinite(header) && header > 0) {
-    return header * MS_PER_SECOND;
-  }
-  return DEFAULT_RETRY_MS * (attempt + 1);
+  const delay = Number.isFinite(header) && header > 0 ? header * MS_PER_SECOND : DEFAULT_RETRY_MS * (attempt + 1);
+  return delay > MAX_RETRY_MS ? undefined : delay;
 };
 
-/** fetch with retries on 429 / 5xx, honouring Retry-After. */
 /** A server that has not answered by now is treated as unreachable instead of hanging the screen. */
 const REQUEST_TIMEOUT_MS = 8000;
 
-const fetchWithTimeout = async (url: string, init?: RequestInit): Promise<Response> => {
+/** fetch that gives up after REQUEST_TIMEOUT_MS, without retries (for APIs that ban retrying clients). */
+export const fetchWithTimeout = async (url: string, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
@@ -84,20 +85,22 @@ const fetchWithTimeout = async (url: string, init?: RequestInit): Promise<Respon
   }
 };
 
+/** fetch with a timeout and retries on 429 / 5xx, honouring Retry-After. */
 export const fetchWithRetry = async (url: string, init?: RequestInit): Promise<Response> => {
   for (let attempt = 0; ; attempt += 1) {
     // Retries must run one after another, so awaiting inside the loop is intended.
     // oxlint-disable-next-line no-await-in-loop
     const response = await fetchWithTimeout(url, init);
     const retryable = response.status === HTTP_TOO_MANY_REQUESTS || response.status >= HTTP_SERVER_ERROR;
-    if (response.ok || !retryable || attempt >= MAX_RETRIES) {
-      if (!response.ok) {
-        // oxlint-disable-next-line no-await-in-loop
-        throw new HttpError(response.status, url, await readBody(response));
-      }
+    const delay = retryable && attempt < MAX_RETRIES ? retryDelay(response, attempt) : undefined;
+    if (response.ok) {
       return response;
     }
+    if (delay === undefined) {
+      // oxlint-disable-next-line no-await-in-loop
+      throw new HttpError(response.status, url, await readBody(response));
+    }
     // oxlint-disable-next-line no-await-in-loop
-    await sleep(retryDelay(response, attempt));
+    await sleep(delay);
   }
 };
