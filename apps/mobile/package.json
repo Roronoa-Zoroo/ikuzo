@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
