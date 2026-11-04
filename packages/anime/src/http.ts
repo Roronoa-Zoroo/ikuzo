@@ -1,18 +1,18 @@
+import { HttpError } from "./errors";
+
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_MS = 2000;
 const MS_PER_SECOND = 1000;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_SERVER_ERROR = 500;
 
-export class HttpError extends Error {
-  readonly status: number;
-
-  constructor(status: number, url: string) {
-    super(`Request to ${url} failed with status ${status}`);
-    this.name = "HttpError";
-    this.status = status;
+const readBody = async (response: Response): Promise<string> => {
+  try {
+    return await response.text();
+  } catch {
+    return "";
   }
-}
+};
 
 const sleep = async (ms: number): Promise<void> => {
   // Wrapping setTimeout is the one place a Promise has to be constructed by hand.
@@ -70,7 +70,8 @@ export const fetchWithRetry = async (url: string, init?: RequestInit): Promise<R
     const retryable = response.status === HTTP_TOO_MANY_REQUESTS || response.status >= HTTP_SERVER_ERROR;
     if (response.ok || !retryable || attempt >= MAX_RETRIES) {
       if (!response.ok) {
-        throw new HttpError(response.status, url);
+        // oxlint-disable-next-line no-await-in-loop
+        throw new HttpError(response.status, url, await readBody(response));
       }
       return response;
     }

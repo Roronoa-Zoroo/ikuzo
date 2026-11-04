@@ -6,7 +6,7 @@ import { Header } from "@/components/header";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { openAnime } from "@/lib/nav";
-import { animeKey, useLibrary } from "@/lib/store";
+import { animeKey, useLibrary, findEntry } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -44,7 +44,7 @@ const BookmarksScreen = () => {
           />
         }
         renderItem={({ item }) => {
-          const entry = entries[animeKey(item.anime)];
+          const entry = findEntry(entries, item.anime);
           return (
             <AnimeRow
               anime={entry?.anime ?? item.anime}

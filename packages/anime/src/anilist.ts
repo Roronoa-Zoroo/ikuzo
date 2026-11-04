@@ -1,3 +1,5 @@
+import { AuthError } from "./auth-error";
+import { HttpError } from "./errors";
 import { createRateLimiter, fetchWithRetry, readJson } from "./http";
 import type {
   AiringStatus,
@@ -18,6 +20,7 @@ const ENDPOINT = "https://graphql.anilist.co";
 /** AniList allows 90 requests/minute (temporarily 30 when degraded). */
 const REQUEST_INTERVAL_MS = 700;
 const PER_PAGE = 25;
+const INVALID_TOKEN = /invalid token|unauthorized/iu;
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_DAY = 86_400;
 const DAYS_PER_WEEK = 7;
@@ -28,7 +31,7 @@ const LINE_BREAK = /<br\s*\/?>/giu;
 
 // ── GraphQL ───────────────────────────────────────────────────────────────
 
-const SUMMARY_FIELDS = `
+export const SUMMARY_FIELDS = `
   id idMal isAdult
   title { romaji english native }
   synonyms
@@ -73,7 +76,7 @@ interface FuzzyDate {
   day?: number | null;
 }
 
-interface AniListMedia {
+export interface AniListMedia {
   id: number;
   idMal?: number | null;
   isAdult?: boolean;
@@ -199,7 +202,7 @@ const toTitle = (media: AniListMedia): string =>
 const toImage = (media: AniListMedia): string | undefined =>
   media.coverImage?.extraLarge ?? media.coverImage?.large ?? undefined;
 
-const toSummary = (media: AniListMedia): AnimeSummary => ({
+export const toSummary = (media: AniListMedia): AnimeSummary => ({
   airedFrom: toDate(media.startDate),
   airedTo: toDate(media.endDate),
   banner: media.bannerImage ?? undefined,
@@ -277,27 +280,48 @@ const toPerson = (va: AniListVoiceActor): Person => ({
 
 // ── Provider ──────────────────────────────────────────────────────────────
 
+/** One limiter for every AniList call in the app, signed in or not. */
+const limit = createRateLimiter(REQUEST_INTERVAL_MS);
+
+/** Runs a GraphQL document against AniList, optionally as the signed-in user. */
+export const aniListRequest = async <T>(
+  document: string,
+  variables: Record<string, unknown>,
+  token?: string
+): Promise<T> =>
+  await limit(async () => {
+    const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
+    if (token !== undefined) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    let response: Response;
+    try {
+      response = await fetchWithRetry(ENDPOINT, {
+        body: JSON.stringify({ query: document, variables }),
+        headers,
+        method: "POST",
+      });
+    } catch (error) {
+      // AniList answers 400 "Invalid token" (not 401) for expired or revoked tokens.
+      if (token !== undefined && error instanceof HttpError && INVALID_TOKEN.test(error.body)) {
+        throw new AuthError("AniList");
+      }
+      throw error;
+    }
+    const body = await readJson<{ data?: T | null; errors?: { message: string }[] }>(response);
+    if (body.data === undefined || body.data === null) {
+      throw new Error(body.errors?.[0]?.message ?? "AniList request failed");
+    }
+    return body.data;
+  });
+
 export type AniListClient = AnimeProvider & {
   /** Batch lookup by MyAnimeList id — used to get exact next-episode times for any show. */
   byMalIds: (malIds: number[]) => Promise<AnimeSummary[]>;
 };
 
 export const createAniListProvider = (): AniListClient => {
-  const limit = createRateLimiter(REQUEST_INTERVAL_MS);
-
-  const query = async <T>(document: string, variables: Record<string, unknown>): Promise<T> =>
-    await limit(async () => {
-      const response = await fetchWithRetry(ENDPOINT, {
-        body: JSON.stringify({ query: document, variables }),
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        method: "POST",
-      });
-      const body = await readJson<{ data?: T | null; errors?: { message: string }[] }>(response);
-      if (body.data === undefined || body.data === null) {
-        throw new Error(body.errors?.[0]?.message ?? "AniList request failed");
-      }
-      return body.data;
-    });
+  const query = aniListRequest;
 
   const page = async (variables: Record<string, unknown>): Promise<Paged<AnimeSummary>> => {
     const data = await query<AniListPage>(PAGE_QUERY, { perPage: PER_PAGE, ...variables });

@@ -12,7 +12,12 @@
     "./anilist": "./src/anilist.ts",
     "./anidb": "./src/anidb.ts",
     "./ids": "./src/ids.ts",
-    "./airing": "./src/airing.ts"
+    "./airing": "./src/airing.ts",
+    "./trackers": "./src/trackers.ts",
+    "./anilist-account": "./src/anilist-account.ts",
+    "./mal-account": "./src/mal-account.ts",
+    "./errors": "./src/errors.ts",
+    "./auth-error": "./src/auth-error.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit"

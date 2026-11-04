@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { animeKey, useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
+import { useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES, useEntry, entryKeyFor } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
@@ -68,8 +68,7 @@ const Chip = ({ label, active, onPress }: { label: string; active: boolean; onPr
 );
 
 const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
-  const key = animeKey(anime);
-  const entry = useLibrary((state) => state.entries[key]);
+  const entry = useEntry(anime);
   const save = useLibrary((state) => state.save);
   const remove = useLibrary((state) => state.remove);
   const [status, setStatus] = useState<WatchStatus>(entry?.status ?? "planned");
@@ -153,7 +152,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           <Pressable
             accessibilityRole="button"
             onPress={() => {
-              remove(key);
+              remove(entryKeyFor(anime));
               onClose();
             }}
             style={[styles.button, styles.danger]}

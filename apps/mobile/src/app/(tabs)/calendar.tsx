@@ -14,7 +14,7 @@ import { formatAirTime } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useLibraryAiring, useSchedule } from "@/lib/queries";
-import { animeKey, useLibrary, useLibraryActions } from "@/lib/store";
+import { animeKey, useLibrary, useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
@@ -31,8 +31,7 @@ const styles = StyleSheet.create({
 });
 
 const BellButton = ({ anime }: { anime: AnimeSummary }) => {
-  const key = animeKey(anime);
-  const entry = useLibrary((state) => state.entries[key]);
+  const entry = useEntry(anime);
   const { save, update } = useLibraryActions();
   const active = entry?.notify === true;
 
@@ -47,7 +46,7 @@ const BellButton = ({ anime }: { anime: AnimeSummary }) => {
     if (entry === undefined) {
       save(anime, { status: "planned" });
     }
-    update(key, { notify: !active });
+    update(entryKeyFor(anime), { notify: !active });
   };
 
   return (

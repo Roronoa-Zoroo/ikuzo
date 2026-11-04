@@ -1,3 +1,4 @@
+import type { ListStatus, RemoteEntry } from "@ikuzo/anime/trackers";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -5,7 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { kv } from "./kv";
 
-export type WatchStatus = "watching" | "planned" | "onHold" | "completed" | "dropped";
+export type WatchStatus = ListStatus;
 
 export const WATCH_STATUSES: readonly WatchStatus[] = ["watching", "planned", "onHold", "completed", "dropped"];
 
@@ -82,6 +83,15 @@ interface LibraryActions {
   deleteNote: (key: string, noteId: string) => void;
   setSettings: (patch: Partial<Settings>) => void;
   importBackup: (backup: Backup) => void;
+  /** Applies a list downloaded from AniList or MyAnimeList; the newer side wins per show. */
+  mergeRemote: (remote: RemoteEntry[]) => MergeResult;
+}
+
+export interface MergeResult {
+  added: number;
+  updated: number;
+  /** Shows changed in Ikuzo after the service's copy: these should be sent back. */
+  localNewer: string[];
 }
 
 export interface Backup extends LibraryState {
@@ -96,6 +106,18 @@ const ID_RADIX = 36;
 export const animeKey = (anime: Pick<AnimeSummary, "source" | "id">): string => `${anime.source}:${anime.id}`;
 
 export const characterKey = (source: Source, id: number): string => `${source}:${id}`;
+
+type EntryLookup = Pick<AnimeSummary, "source" | "id" | "ids">;
+
+const sameShow = (a: AnimeSummary["ids"], b: AnimeSummary["ids"]): boolean =>
+  (a.mal !== undefined && a.mal === b.mal) || (a.anilist !== undefined && a.anilist === b.anilist);
+
+/**
+ * The library entry for a show, whichever source it was added from: a show added
+ * from MyAnimeList is the same entry when opened through AniList.
+ */
+export const findEntry = (entries: Record<string, LibraryEntry>, anime: EntryLookup): LibraryEntry | undefined =>
+  entries[animeKey(anime)] ?? Object.values(entries).find((entry) => sameShow(entry.anime.ids, anime.ids));
 
 const clampProgress = (anime: AnimeSummary, progress: number): number => {
   const max = anime.episodes ?? Number.POSITIVE_INFINITY;
@@ -113,6 +135,12 @@ const statusForProgress = (entry: LibraryEntry, progress: number): WatchStatus =
   }
   return entry.status;
 };
+
+/** Keeps the entry's own snapshot but learns the other service's id. */
+const mergeIds = (anime: AnimeSummary, other: AnimeSummary): AnimeSummary => ({
+  ...anime,
+  ids: { ...other.ids, ...anime.ids },
+});
 
 const without = <T>(record: Record<string, T>, key: string): Record<string, T> =>
   Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
@@ -176,6 +204,71 @@ export const useLibrary = create<LibraryState & LibraryActions>()(
         });
       },
 
+      mergeRemote: (remote) => {
+        const result: MergeResult = { added: 0, localNewer: [], updated: 0 };
+        set((state) => {
+          const entries = { ...state.entries };
+          const byMal = new Map<number, string>();
+          const byAniList = new Map<number, string>();
+          const index = (entry: LibraryEntry) => {
+            if (entry.anime.ids.mal !== undefined) {
+              byMal.set(entry.anime.ids.mal, entry.key);
+            }
+            if (entry.anime.ids.anilist !== undefined) {
+              byAniList.set(entry.anime.ids.anilist, entry.key);
+            }
+          };
+          for (const entry of Object.values(entries)) {
+            index(entry);
+          }
+          for (const item of remote) {
+            const { ids } = item.anime;
+            const key =
+              (ids.mal === undefined ? undefined : byMal.get(ids.mal)) ??
+              (ids.anilist === undefined ? undefined : byAniList.get(ids.anilist));
+            const local = key === undefined ? undefined : entries[key];
+            const changedAt = item.updatedAt > 0 ? item.updatedAt : Date.now();
+            if (local === undefined) {
+              const entry: LibraryEntry = {
+                addedAt: changedAt,
+                anime: item.anime,
+                key: animeKey(item.anime),
+                notes: [],
+                notify: false,
+                progress: item.progress,
+                score: item.score,
+                status: item.status,
+                updatedAt: changedAt,
+              };
+              entries[entry.key] = entry;
+              index(entry);
+              result.added += 1;
+              continue;
+            }
+            const anime = mergeIds(local.anime, item.anime);
+            const same = local.status === item.status && local.progress === item.progress && local.score === item.score;
+            if (same) {
+              entries[local.key] = { ...local, anime };
+            } else if (item.updatedAt >= local.updatedAt) {
+              entries[local.key] = {
+                ...local,
+                anime,
+                progress: item.progress,
+                score: item.score,
+                status: item.status,
+                updatedAt: changedAt,
+              };
+              result.updated += 1;
+            } else {
+              entries[local.key] = { ...local, anime };
+              result.localNewer.push(local.key);
+            }
+          }
+          return { entries };
+        });
+        return result;
+      },
+
       refreshSnapshots: (shows) => {
         set((state) => {
           const entries = { ...state.entries };
@@ -196,9 +289,9 @@ export const useLibrary = create<LibraryState & LibraryActions>()(
 
       save: (anime, patch = {}) => {
         set((state) => {
-          const key = animeKey(anime);
+          const existing = findEntry(state.entries, anime);
+          const key = existing?.key ?? animeKey(anime);
           const now = Date.now();
-          const existing = state.entries[key];
           const base: LibraryEntry = existing ?? {
             addedAt: now,
             anime,
@@ -214,7 +307,7 @@ export const useLibrary = create<LibraryState & LibraryActions>()(
           const entry: LibraryEntry = {
             ...base,
             ...patch,
-            anime: { ...base.anime, ...anime },
+            anime: existing?.anime.source === anime.source ? { ...base.anime, ...anime } : mergeIds(base.anime, anime),
             progress,
             updatedAt: now,
           };
@@ -324,6 +417,7 @@ export const useLibraryActions = (): LibraryActions =>
       deleteNote: state.deleteNote,
       importBackup: state.importBackup,
       increment: state.increment,
+      mergeRemote: state.mergeRemote,
       refreshSnapshots: state.refreshSnapshots,
       remove: state.remove,
       save: state.save,
@@ -334,3 +428,11 @@ export const useLibraryActions = (): LibraryActions =>
       update: state.update,
     }))
   );
+
+/** The library entry for a show, matched across AniList and MyAnimeList ids. */
+export const useEntry = (anime: EntryLookup): LibraryEntry | undefined =>
+  useLibrary((state) => findEntry(state.entries, anime));
+
+/** Key of the show's entry if it is in the library, otherwise the key a new entry would get. */
+export const entryKeyFor = (anime: EntryLookup): string =>
+  findEntry(useLibrary.getState().entries, anime)?.key ?? animeKey(anime);

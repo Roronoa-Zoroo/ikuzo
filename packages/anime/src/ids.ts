@@ -1,4 +1,5 @@
-import { fetchWithRetry, HttpError, readJson } from "./http";
+import { HttpError } from "./errors";
+import { fetchWithRetry, readJson } from "./http";
 import type { ExternalIds } from "./types";
 
 /**

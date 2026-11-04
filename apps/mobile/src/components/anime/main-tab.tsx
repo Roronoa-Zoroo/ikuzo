@@ -15,7 +15,16 @@ import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useCharacters, useRecommendations } from "@/lib/queries";
-import { animeKey, characterKey, useLibrary, useLibraryActions, WATCH_STATUS_LABELS } from "@/lib/store";
+import {
+  animeKey,
+  characterKey,
+  useLibrary,
+  useLibraryActions,
+  WATCH_STATUS_LABELS,
+  useEntry,
+  entryKeyFor,
+  findEntry,
+} from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
@@ -95,9 +104,9 @@ const StatTile = ({
 );
 
 const ListControls = ({ anime }: { anime: AnimeDetail }) => {
-  const key = animeKey(anime);
-  const entry = useLibrary((state) => state.entries[key]);
-  const bookmarked = useLibrary((state) => state.bookmarks[key] !== undefined);
+  const entry = useEntry(anime);
+  const key = entry?.key ?? animeKey(anime);
+  const bookmarked = useLibrary((state) => state.bookmarks[animeKey(anime)] !== undefined);
   const { increment, toggleBookmark } = useLibraryActions();
   const [editing, setEditing] = useState(false);
   const openEditor = () => {
@@ -159,8 +168,7 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
 };
 
 const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
-  const key = animeKey(anime);
-  const notify = useLibrary((state) => state.entries[key]?.notify === true);
+  const notify = useEntry(anime)?.notify === true;
   const { save, update } = useLibraryActions();
   const now = useNow();
   const next = estimateNextEpisode(anime, now);
@@ -177,10 +185,10 @@ const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
       );
       return;
     }
-    if (useLibrary.getState().entries[key] === undefined) {
+    if (findEntry(useLibrary.getState().entries, anime) === undefined) {
       save(anime, { status: "planned" });
     }
-    update(key, { notify: !notify });
+    update(entryKeyFor(anime), { notify: !notify });
   };
 
   return (

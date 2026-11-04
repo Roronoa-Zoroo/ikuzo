@@ -16,6 +16,19 @@ It keeps your watch lists, counts down to every next episode, notifies you when 
 - **Stats:** episodes watched, time spent, your score distribution and top genres
 - **Backup:** export your library as JSON and restore it on another phone
 
+## Sync with AniList and MyAnimeList
+
+In **Settings → Accounts** you can connect AniList, MyAnimeList or both:
+
+- **Connecting** imports your list (status, progress, score). If a show is in both your Ikuzo list and the service's, whichever copy changed most recently is kept.
+- **Your changes go out automatically:** +1, status, score and deletions are sent to every connected account within a couple of seconds.
+- **Offline:** changes wait in a queue and are sent when the app is opened again or you pull to refresh.
+- **Expired sign-in:** changes stay queued until you tap **Reconnect**. Nothing is lost.
+- **Changes made on the websites** come in when the app starts or you pull to refresh Home.
+- **Import a public list** copies anyone's public list without signing in. It's read-only, so nothing is sent back.
+
+Sign-in uses each service's OAuth flow for apps: the implicit grant on AniList and PKCE on MyAnimeList. No client secret is involved, and tokens are kept in the Android Keystore or iOS Keychain. Shows removed on the website are not removed from Ikuzo, so a sync never deletes anything on your phone. Sign-in needs a development or release build; Expo Go cannot open the `ikuzo://` sign-in links.
+
 ## Data sources
 
 | Source | Used for |

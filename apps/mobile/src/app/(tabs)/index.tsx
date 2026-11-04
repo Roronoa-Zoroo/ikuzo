@@ -13,6 +13,7 @@ import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
 import { displayTitle, useLibrary, useLibraryActions, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
 import type { LibraryEntry, WatchStatus } from "@/lib/store";
+import { pullQuietly } from "@/lib/sync";
 import { colors, radius, spacing } from "@/lib/theme";
 
 type SortKey = "updated" | "title" | "score" | "start";
@@ -63,6 +64,8 @@ const useRefreshLibrary = () => {
       stale.map(async (entry) => await getProvider(entry.anime.source).getAnime(entry.anime.id))
     );
     refreshSnapshots(results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])));
+    // Pull changes made on AniList / MyAnimeList; failures show up in Settings.
+    await pullQuietly();
     setRefreshing(false);
   };
   return { refresh, refreshing };

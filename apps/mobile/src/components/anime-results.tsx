@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { ActivityIndicator, FlatList, StyleSheet } from "react-native";
 
 import { openAnime } from "@/lib/nav";
-import { animeKey, useLibrary } from "@/lib/store";
+import { animeKey, useLibrary, findEntry } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 import { AnimeRow } from "./anime-row";
@@ -78,7 +78,7 @@ export const AnimeResults = ({ query, header, emptyTitle = "No results" }: Anime
           onPress={() => {
             openAnime(item);
           }}
-          progress={entries[animeKey(item)]?.progress}
+          progress={findEntry(entries, item)?.progress}
         />
       )}
     />

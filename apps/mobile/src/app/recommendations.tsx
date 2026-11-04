@@ -10,7 +10,7 @@ import { EmptyState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
-import { animeKey, useLibrary } from "@/lib/store";
+import { animeKey, useLibrary, findEntry } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 /** How many favourite shows seed the recommendations. */
@@ -51,7 +51,7 @@ const RecommendationsScreen = () => {
       const seed = seeds[index];
       for (const anime of result.data ?? []) {
         const key = animeKey(anime);
-        if (entries[key] !== undefined || seed === undefined) {
+        if (findEntry(entries, anime) !== undefined || seed === undefined) {
           continue;
         }
         const current = counts.get(key) ?? { anime, because: [], votes: 0 };

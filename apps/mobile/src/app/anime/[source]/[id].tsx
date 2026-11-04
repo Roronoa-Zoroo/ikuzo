@@ -19,7 +19,7 @@ import { AppText } from "@/components/text";
 import { openLink } from "@/lib/links";
 import { useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
-import { animeKey, displayTitle, useLibrary, useLibraryActions } from "@/lib/store";
+import { animeKey, displayTitle, useLibrary, useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
 type DetailTab = "main" | "episodes" | "notes" | "reviews" | "stats" | "songs";
@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
 
 const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
   const key = animeKey(anime);
-  const inList = useLibrary((state) => state.entries[key] !== undefined);
+  const inList = useEntry(anime) !== undefined;
   const bookmarked = useLibrary((state) => state.bookmarks[key] !== undefined);
   const favorite = useLibrary((state) => state.favoriteShows[key] !== undefined);
   const { remove, toggleBookmark, toggleFavoriteShow } = useLibraryActions();
@@ -89,7 +89,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
           { style: "cancel", text: "Cancel" },
           {
             onPress: () => {
-              remove(key);
+              remove(entryKeyFor(anime));
             },
             style: "destructive",
             text: "Delete",

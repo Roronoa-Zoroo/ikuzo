@@ -4,6 +4,7 @@ import { createAniListProvider } from "@ikuzo/anime/anilist";
 import { createJikanProvider } from "@ikuzo/anime/jikan";
 import type { AnimeProvider, Source } from "@ikuzo/anime/types";
 
+import { readEnv } from "./env";
 import { kv } from "./kv";
 
 export const anilist = createAniListProvider();
@@ -15,10 +16,6 @@ const providers: Record<Source, AnimeProvider> = {
 
 export const getProvider = (source: Source): AnimeProvider => providers[source];
 
-const readEnv = (value: unknown, fallback: string): string =>
-  typeof value === "string" && value !== "" ? value : fallback;
-
-// Expo inlines EXPO_PUBLIC_* variables at build time, so they must be read by their full name.
 const anidbClientName = readEnv(process.env.EXPO_PUBLIC_ANIDB_CLIENT, "");
 const anidbClientVersion = Number(readEnv(process.env.EXPO_PUBLIC_ANIDB_CLIENT_VERSION, "1"));
 

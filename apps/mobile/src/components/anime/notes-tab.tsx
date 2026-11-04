@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
-import { animeKey, useLibrary, useLibraryActions } from "@/lib/store";
+import { useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -33,8 +33,7 @@ const styles = StyleSheet.create({
 
 /** Personal notes, optionally tied to an episode. */
 export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
-  const key = animeKey(anime);
-  const entry = useLibrary((state) => state.entries[key]);
+  const entry = useEntry(anime);
   const { addNote, deleteNote, save } = useLibraryActions();
   const [text, setText] = useState("");
   const [episode, setEpisode] = useState(entry === undefined ? "" : String(entry.progress));
@@ -44,9 +43,10 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
     if (trimmed === "") {
       return;
     }
-    if (useLibrary.getState().entries[key] === undefined) {
+    if (entry === undefined) {
       save(anime);
     }
+    const key = entryKeyFor(anime);
     const number = Number(episode);
     addNote(key, trimmed, episode === "" || Number.isNaN(number) ? undefined : number);
     setText("");
@@ -93,7 +93,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
               accessibilityLabel="Delete note"
               hitSlop={8}
               onPress={() => {
-                deleteNote(key, note.id);
+                deleteNote(entry?.key ?? "", note.id);
               }}
             >
               <Ionicons color={colors.textMuted} name="trash-outline" size={18} />

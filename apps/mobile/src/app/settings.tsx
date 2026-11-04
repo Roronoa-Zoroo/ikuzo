@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { router } from "expo-router";
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Switch, View } from "react-native";
 
+import { AccountsSection } from "@/components/accounts-section";
 import { ChipRow } from "@/components/chips";
 import type { ChipOption } from "@/components/chips";
 import { Header } from "@/components/header";
@@ -112,6 +113,8 @@ const SettingsScreen = () => {
         title="Settings"
       />
       <ScrollView contentContainerStyle={styles.content}>
+        <AccountsSection />
+
         <Section title="Data">
           <Row detail="Used for Discover, Search, Seasonal and Calendar" label="Browse with" />
           <ChipRow
