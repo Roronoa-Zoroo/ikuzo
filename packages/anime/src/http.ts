@@ -62,11 +62,33 @@ const retryDelay = (response: Response, attempt: number): number => {
 };
 
 /** fetch with retries on 429 / 5xx, honouring Retry-After. */
+/** A server that has not answered by now is treated as unreachable instead of hanging the screen. */
+const REQUEST_TIMEOUT_MS = 8000;
+
+const fetchWithTimeout = async (url: string, init?: RequestInit): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`No answer from ${new URL(url).host} within ${REQUEST_TIMEOUT_MS / MS_PER_SECOND}s`, {
+        cause: error,
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export const fetchWithRetry = async (url: string, init?: RequestInit): Promise<Response> => {
   for (let attempt = 0; ; attempt += 1) {
     // Retries must run one after another, so awaiting inside the loop is intended.
     // oxlint-disable-next-line no-await-in-loop
-    const response = await fetch(url, init);
+    const response = await fetchWithTimeout(url, init);
     const retryable = response.status === HTTP_TOO_MANY_REQUESTS || response.status >= HTTP_SERVER_ERROR;
     if (response.ok || !retryable || attempt >= MAX_RETRIES) {
       if (!response.ok) {

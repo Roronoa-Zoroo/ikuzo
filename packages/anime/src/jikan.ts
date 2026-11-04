@@ -20,7 +20,8 @@ import type {
 
 const BASE_URL = "https://api.jikan.moe/v4";
 /** Jikan allows 3 requests/second and 60/minute. */
-const REQUEST_INTERVAL_MS = 400;
+/** Jikan allows 3 requests/second but only 60/minute; staying at 1/second avoids 429 storms. */
+const REQUEST_INTERVAL_MS = 1000;
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 const WEEKDAY_NAMES: readonly string[] = WEEKDAYS;
 const DURATION_PATTERN = /(?:(?<hours>\d+) hr)?\s*(?:(?<minutes>\d+) min)?/u;

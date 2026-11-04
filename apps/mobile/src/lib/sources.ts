@@ -2,16 +2,19 @@ import { createAniDbClient } from "@ikuzo/anime/anidb";
 import type { AniDbClient } from "@ikuzo/anime/anidb";
 import { createAniListProvider } from "@ikuzo/anime/anilist";
 import { createJikanProvider } from "@ikuzo/anime/jikan";
+import { createMalProvider } from "@ikuzo/anime/mal";
 import type { AnimeProvider, Source } from "@ikuzo/anime/types";
 
 import { readEnv } from "./env";
 import { kv } from "./kv";
+import { MAL_CLIENT_ID } from "./trackers-config";
 
 export const anilist = createAniListProvider();
 
 const providers: Record<Source, AnimeProvider> = {
   anilist,
-  mal: createJikanProvider(),
+  // Official MyAnimeList API first; Jikan and AniList fill in what it lacks or when Jikan is down.
+  mal: createMalProvider({ anilist, clientId: MAL_CLIENT_ID, jikan: createJikanProvider() }),
 };
 
 export const getProvider = (source: Source): AnimeProvider => providers[source];

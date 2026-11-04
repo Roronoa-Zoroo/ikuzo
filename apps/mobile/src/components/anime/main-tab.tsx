@@ -371,14 +371,14 @@ const Characters = ({ anime }: { anime: AnimeDetail }) => {
         renderItem={({ item }) => (
           <PosterTile
             favorite={{
-              active: favorites[characterKey(anime.source, item.id)] !== undefined,
+              active: favorites[characterKey(item.source ?? anime.source, item.id)] !== undefined,
               onToggle: () => {
-                toggle(anime.source, item);
+                toggle(item.source ?? anime.source, item);
               },
             }}
             image={item.image}
             onPress={() => {
-              openCharacter(anime.source, item.id);
+              openCharacter(item.source ?? anime.source, item.id);
             }}
             subtitle={item.role}
             title={item.name}

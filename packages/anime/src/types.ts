@@ -96,6 +96,8 @@ export interface Person {
 
 export interface CharacterRole {
   id: number;
+  /** Database the id belongs to, when it differs from the anime's (fallback data). */
+  source?: Source;
   name: string;
   image?: string;
   role: string;

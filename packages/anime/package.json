@@ -17,7 +17,8 @@
     "./anilist-account": "./src/anilist-account.ts",
     "./mal-account": "./src/mal-account.ts",
     "./errors": "./src/errors.ts",
-    "./auth-error": "./src/auth-error.ts"
+    "./auth-error": "./src/auth-error.ts",
+    "./mal": "./src/mal.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit"

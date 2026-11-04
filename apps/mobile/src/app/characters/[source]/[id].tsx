@@ -67,7 +67,7 @@ const CharactersScreen = () => {
             <Pressable
               accessibilityRole="button"
               onPress={() => {
-                openCharacter(source, item.id);
+                openCharacter(item.source ?? source, item.id);
               }}
               style={styles.row}
             >

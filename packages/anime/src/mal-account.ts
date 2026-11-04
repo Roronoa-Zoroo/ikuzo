@@ -64,7 +64,7 @@ const STATUSES: Record<string, AiringStatus> = {
   not_yet_aired: "upcoming",
 };
 
-interface MalNode {
+export interface MalNode {
   id: number;
   title: string;
   main_picture?: { medium?: string; large?: string };

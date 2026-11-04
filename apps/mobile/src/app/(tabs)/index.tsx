@@ -16,6 +16,9 @@ import type { LibraryEntry, WatchStatus } from "@/lib/store";
 import { pullQuietly } from "@/lib/sync";
 import { colors, radius, spacing } from "@/lib/theme";
 
+/** Most shows refreshed per pull-to-refresh. */
+const REFRESH_LIMIT = 15;
+
 type SortKey = "updated" | "title" | "score" | "start";
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -54,11 +57,14 @@ const useRefreshLibrary = () => {
   const refresh = async () => {
     setRefreshing(true);
     const { entries, refreshSnapshots } = useLibrary.getState();
-    // Only shows that can still change (airing, upcoming) need fresh metadata.
-    const stale = Object.values(entries).filter(
-      (entry) =>
-        entry.anime.status === "airing" || entry.anime.status === "upcoming" || entry.anime.status === "unknown"
-    );
+    // Only shows you are watching that can still change, newest first: a big imported
+    // list must not queue hundreds of requests in front of what you open next.
+    const stale = Object.values(entries)
+      .filter(
+        (entry) => entry.status === "watching" && (entry.anime.status === "airing" || entry.anime.status === "upcoming")
+      )
+      .toSorted((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, REFRESH_LIMIT);
     // allSettled never rejects: one failing show must not stop the others from refreshing.
     const results = await Promise.allSettled(
       stale.map(async (entry) => await getProvider(entry.anime.source).getAnime(entry.anime.id))
