@@ -3,6 +3,8 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 import { withAniDbCleartext } from "./plugins/with-anidb-cleartext.ts";
 
 const BACKGROUND = "#0f1626";
+const GOOGLE_SANS = "./node_modules/@expo-google-fonts/google-sans";
+const GOOGLE_SANS_WEIGHTS = ["400Regular", "500Medium", "600SemiBold", "700Bold"];
 const BUNDLE_ID = "io.github.roronoazoroo.ikuzo";
 
 const config = ({ config: base }: ConfigContext): ExpoConfig =>
@@ -40,6 +42,28 @@ const config = ({ config: base }: ConfigContext): ExpoConfig =>
       "expo-status-bar",
       "expo-image",
       "expo-sqlite",
+      [
+        "expo-font",
+        {
+          // Google Sans (SIL OFL 1.1), the typeface anYme used, embedded at build time.
+          android: {
+            fonts: [
+              {
+                fontDefinitions: [
+                  { path: `${GOOGLE_SANS}/400Regular/GoogleSans_400Regular.ttf`, weight: 400 },
+                  { path: `${GOOGLE_SANS}/500Medium/GoogleSans_500Medium.ttf`, weight: 500 },
+                  { path: `${GOOGLE_SANS}/600SemiBold/GoogleSans_600SemiBold.ttf`, weight: 600 },
+                  { path: `${GOOGLE_SANS}/700Bold/GoogleSans_700Bold.ttf`, weight: 700 },
+                ],
+                fontFamily: "GoogleSans",
+              },
+            ],
+          },
+          ios: {
+            fonts: GOOGLE_SANS_WEIGHTS.map((weight) => `${GOOGLE_SANS}/${weight}/GoogleSans_${weight}.ttf`),
+          },
+        },
+      ],
       "expo-web-browser",
       ["expo-notifications", { color: "#3d8bfd" }],
     ],

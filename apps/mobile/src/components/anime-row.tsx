@@ -26,6 +26,8 @@ interface AnimeRowProps {
   /** Small label over the poster, e.g. "EP8". */
   posterLabel?: string;
   trailing?: ReactNode;
+  /** Hide the AIRING / NYA badge where every row has the same status (Calendar). */
+  showStatus?: boolean;
 }
 
 const POSTER_WIDTH = 96;
@@ -40,7 +42,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
     overflow: "hidden",
   },
-  footer: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  footer: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
   more: { borderRadius: radius.pill, padding: 2 },
   poster: { backgroundColor: colors.surface, height: POSTER_HEIGHT, width: POSTER_WIDTH },
   posterLabel: {
@@ -58,7 +60,16 @@ const styles = StyleSheet.create({
 });
 
 /** The list card used by Home, Bookmarks, Calendar and search results. */
-export const AnimeRow = ({ anime, onPress, progress, onMore, footer, posterLabel, trailing }: AnimeRowProps) => {
+export const AnimeRow = ({
+  anime,
+  onPress,
+  progress,
+  onMore,
+  footer,
+  posterLabel,
+  trailing,
+  showStatus = true,
+}: AnimeRowProps) => {
   const language = useLibrary((state) => state.settings.titleLanguage);
   const total = anime.episodes;
   const ratio = progress !== undefined && total !== null && total > 0 ? Math.min(1, progress / total) : 0;
@@ -108,7 +119,7 @@ export const AnimeRow = ({ anime, onPress, progress, onMore, footer, posterLabel
                   : `${progress}/${total ?? "?"}`}
               </AppText>
             )}
-            <StatusBadge status={anime.status} />
+            {showStatus ? <StatusBadge status={anime.status} /> : null}
           </View>
           {progress === undefined ? null : <ProgressBar ratio={ratio} />}
         </View>

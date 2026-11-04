@@ -1,3 +1,12 @@
+import { Platform } from "react-native";
+
+/**
+ * Google Sans, embedded by the expo-font config plugin. Android registers one
+ * family with all weights; iOS uses the font's own family name. Web falls back
+ * to the system font.
+ */
+export const fontFamily = Platform.select({ android: "GoogleSans", default: undefined, ios: "Google Sans" });
+
 /** Dark navy palette: easy on the eyes for late-night episode tracking. */
 export const colors = {
   accent: "#3d8bfd",

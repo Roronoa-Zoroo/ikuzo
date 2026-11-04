@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES, useEntry, entryKeyFor } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
-import { colors, fontSize, radius, spacing } from "@/lib/theme";
+import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 import { SlidePanel } from "./slide-panel";
 import { AppText } from "./text";
@@ -37,6 +37,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.sm,
     color: colors.text,
+    fontFamily,
     fontSize: fontSize.lg,
     minWidth: 64,
     paddingHorizontal: spacing.md,

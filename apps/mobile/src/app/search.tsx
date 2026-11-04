@@ -9,7 +9,7 @@ import type { ChipOption } from "@/components/chips";
 import { Header } from "@/components/header";
 import { useGenres, useSearch } from "@/lib/queries";
 import { useLibrary } from "@/lib/store";
-import { colors, radius, spacing } from "@/lib/theme";
+import { colors, radius, spacing, fontFamily } from "@/lib/theme";
 
 const DEBOUNCE_MS = 400;
 const YEARS_BACK = 40;
@@ -44,6 +44,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.md,
     color: colors.text,
+    fontFamily,
     margin: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,

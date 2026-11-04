@@ -4,7 +4,7 @@ import type { ColorValue } from "react-native";
 
 import { SideMenu } from "@/components/side-menu";
 import { duration } from "@/lib/motion";
-import { colors } from "@/lib/theme";
+import { colors, fontFamily } from "@/lib/theme";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -47,6 +47,7 @@ const TabsLayout = () => (
         sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textSubtle,
+        tabBarLabelStyle: { fontFamily, fontWeight: "500" },
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         transitionSpec: { animation: "timing", config: { duration: duration.crossfade } },
       }}

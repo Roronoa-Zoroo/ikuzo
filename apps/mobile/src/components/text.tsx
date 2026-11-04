@@ -1,7 +1,7 @@
 import { Text } from "react-native";
 import type { TextProps } from "react-native";
 
-import { colors, fontSize } from "@/lib/theme";
+import { colors, fontFamily, fontSize } from "@/lib/theme";
 
 type Variant = "title" | "heading" | "body" | "label" | "caption";
 
@@ -19,5 +19,5 @@ export interface AppTextProps extends TextProps {
 }
 
 export const AppText = ({ variant = "body", color, style, ...props }: AppTextProps) => (
-  <Text style={[VARIANTS[variant], color === undefined ? null : { color }, style]} {...props} />
+  <Text style={[{ fontFamily }, VARIANTS[variant], color === undefined ? null : { color }, style]} {...props} />
 );

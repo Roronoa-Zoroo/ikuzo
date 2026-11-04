@@ -124,6 +124,7 @@ const MyShows = () => {
           onPress={() => {
             openAnime(item.entry.anime);
           }}
+          showStatus={false}
           posterLabel={`EP${item.episode}`}
           trailing={<BellButton anime={item.entry.anime} />}
         />
@@ -175,6 +176,7 @@ const DaySchedule = ({ day }: { day: number }) => {
           onPress={() => {
             openAnime(item.anime);
           }}
+          showStatus={false}
           posterLabel={item.next === undefined ? undefined : `EP${item.next.episode}`}
           trailing={<BellButton anime={item.anime} />}
         />

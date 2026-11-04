@@ -30,7 +30,7 @@ import { duration } from "@/lib/motion";
 import { useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
 import { animeKey, displayTitle, useLibrary, useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
-import { colors, fontSize, radius, spacing } from "@/lib/theme";
+import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 type DetailTab = "main" | "episodes" | "notes" | "reviews" | "stats" | "songs";
 
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   poster: { backgroundColor: colors.surface, borderRadius: radius.sm, height: POSTER_HEIGHT, width: POSTER_WIDTH },
   screen: { backgroundColor: colors.background, flex: 1 },
   tabs: { left: 0, position: "absolute", right: 0, top: 0, zIndex: 2 },
-  title: { color: colors.text, flex: 1, fontSize: fontSize.lg, fontWeight: "700" },
+  title: { color: colors.text, flex: 1, fontFamily, fontSize: fontSize.lg, fontWeight: "700" },
   topBar: {
     alignItems: "center",
     flexDirection: "row",

@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from "react-nat
 
 import { useAccounts } from "@/lib/accounts";
 import { connect, disconnect, importPublicList, pull } from "@/lib/sync";
-import { colors, fontSize, radius, spacing } from "@/lib/theme";
+import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
 import { ChipRow } from "./chips";
@@ -37,6 +37,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     color: colors.text,
     flex: 1,
+    fontFamily,
     fontSize: fontSize.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

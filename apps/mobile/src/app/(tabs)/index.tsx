@@ -17,7 +17,7 @@ import { getProvider } from "@/lib/sources";
 import { displayTitle, useLibrary, useLibraryActions, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
 import type { LibraryEntry, WatchStatus } from "@/lib/store";
 import { pullQuietly } from "@/lib/sync";
-import { colors, radius, spacing } from "@/lib/theme";
+import { colors, radius, spacing, fontFamily } from "@/lib/theme";
 
 /** Most shows refreshed per pull-to-refresh. */
 const REFRESH_LIMIT = 15;
@@ -45,6 +45,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.md,
     color: colors.text,
+    fontFamily,
     marginBottom: spacing.sm,
     marginHorizontal: spacing.md,
     paddingHorizontal: spacing.md,

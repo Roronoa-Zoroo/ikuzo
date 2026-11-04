@@ -7,7 +7,7 @@ import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
-import { colors, fontSize, radius, spacing } from "@/lib/theme";
+import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 const styles = StyleSheet.create({
   episode: { textAlign: "center", width: 64 },
@@ -16,6 +16,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.sm,
     color: colors.text,
+    fontFamily,
     fontSize: fontSize.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
