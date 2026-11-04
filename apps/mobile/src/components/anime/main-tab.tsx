@@ -80,7 +80,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     paddingVertical: spacing.md,
   },
-  relation: { gap: spacing.xs },
   statRow: { flexDirection: "row", justifyContent: "space-between" },
   statTile: { alignItems: "center", flex: 1, gap: spacing.xs },
   tab: { gap: spacing.md, paddingVertical: spacing.md },
@@ -393,31 +392,46 @@ const Characters = ({ anime }: { anime: AnimeDetail }) => {
   );
 };
 
+/** Story order first: what comes before and after, then everything else. */
+const RELATION_ORDER = ["Prequel", "Sequel", "Parent story", "Side story", "Alternative version", "Spin-off"];
+
+const relationRank = (relation: string): number => {
+  const rank = RELATION_ORDER.findIndex((name) => name.toLowerCase() === relation.toLowerCase());
+  return rank === -1 ? RELATION_ORDER.length : rank;
+};
+
+/** Related anime as poster cards (relation underneath) that open their own page. */
 const Related = ({ anime }: { anime: AnimeDetail }) => {
-  const groups = anime.relations
-    .map((group) => ({ ...group, items: group.items.filter((item) => item.kind === "anime") }))
-    .filter((group) => group.items.length > 0);
+  const items = anime.relations
+    .toSorted((a, b) => relationRank(a.relation) - relationRank(b.relation))
+    .flatMap((group) =>
+      group.items.filter((item) => item.kind === "anime").map((item) => ({ ...item, relation: group.relation }))
+    );
   return (
-    <Section title="Related">
-      {groups.length === 0 ? <AppText variant="caption">No related anime.</AppText> : null}
-      {groups.map((group) => (
-        <View key={group.relation} style={styles.relation}>
-          <AppText variant="caption">{group.relation}</AppText>
-          {group.items.map((item) => (
-            <Touchable
-              accessibilityRole="link"
-              key={item.id}
-              onPress={() => {
-                openAnime({ id: item.id, source: anime.source });
-              }}
-            >
-              <AppText color={colors.accent} variant="label">
-                {item.title}
-              </AppText>
-            </Touchable>
-          ))}
-        </View>
-      ))}
+    <Section flush title="Related">
+      {items.length === 0 ? (
+        <AppText style={styles.pad} variant="caption">
+          No related anime.
+        </AppText>
+      ) : null}
+      <FlatList
+        contentContainerStyle={styles.carousel}
+        data={items}
+        horizontal
+        keyExtractor={(item) => `${item.relation}-${item.id}`}
+        renderItem={({ item }) => (
+          <PosterTile
+            image={item.image}
+            onPress={() => {
+              openAnime({ id: item.id, source: anime.source });
+            }}
+            subtitle={item.relation}
+            title={item.title}
+            width={CHARACTER_TILE_WIDTH}
+          />
+        )}
+        showsHorizontalScrollIndicator={false}
+      />
     </Section>
   );
 };
