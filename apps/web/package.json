@@ -2,6 +2,7 @@
   "name": "web",
   "private": true,
   "description": "Ikuzo website",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "build": "astro build",

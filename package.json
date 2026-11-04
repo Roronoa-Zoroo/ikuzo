@@ -1,6 +1,7 @@
 {
   "name": "ikuzo",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "turbo run build",
     "check": "ultracite check",

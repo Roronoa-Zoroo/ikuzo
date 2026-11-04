@@ -73,6 +73,10 @@ Linting and formatting use [oxc](https://oxc.rs) (oxlint with type-aware rules, 
 
 Issues and pull requests are welcome. Run `pnpm fix` and `pnpm check-types` before you open a PR.
 
+## License
+
+Ikuzo is free software under the [GNU General Public License v3.0 or later](LICENSE). You can use, study, share and change it; versions you distribute must stay open under the same licence.
+
 ## Disclaimer
 
 Ikuzo is an independent project and is not affiliated with AniList, MyAnimeList, Jikan or AniDB. Anime titles and artwork belong to their respective owners.

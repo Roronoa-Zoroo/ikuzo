@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Typed clients for MyAnimeList (Jikan), AniList and AniDB with one shared data model",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
     "./types": "./src/types.ts",
