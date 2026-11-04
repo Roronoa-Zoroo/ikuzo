@@ -2,7 +2,7 @@ import type { ListChange, TrackerId } from "./trackers";
 import type { ExternalIds } from "./types";
 
 /** Why a change waits for the user before it is sent. */
-export type HoldReason = "bulk-remove" | "bulk-add";
+export type HoldReason = "bulk-remove";
 
 /** One change made in Ikuzo that still has to reach one service. */
 export interface SyncOp {
@@ -29,11 +29,9 @@ export const sameTarget = (a: Pick<SyncOp, "key" | "tracker">, b: Pick<SyncOp, "
 
 /**
  * Folds a new change into the pending one for the same show and service:
- * - save + save sends the union of the fields. Whether it waits for the user's OK is decided by
- *   the pending op: a change the user made never becomes held because a sync offered it later,
- *   and a held addition stays held until the user decides.
- * - anything + remove is a removal (held only if the pending removal was).
- * - remove + save (Undo, or added again) replaces the removal.
+ * - save + save sends the union of the fields.
+ * - anything + remove is a removal (still held if the pending removal was).
+ * - remove + save (added again) replaces the removal.
  */
 export const mergeOp = (previous: SyncOp | undefined, next: SyncOp): SyncOp => {
   if (previous === undefined) {

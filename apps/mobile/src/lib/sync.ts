@@ -1,3 +1,5 @@
+import { planPull, planUpload } from "@ikuzo/anime/account-sync";
+import type { PendingChange } from "@ikuzo/anime/account-sync";
 import { aniListAuthorizeUrl, createAniListAccount, parseAniListRedirect } from "@ikuzo/anime/anilist-account";
 import { AuthError } from "@ikuzo/anime/auth-error";
 import { HttpError } from "@ikuzo/anime/errors";
@@ -9,31 +11,44 @@ import {
   parseMalRedirect,
   refreshMalSession,
 } from "@ikuzo/anime/mal-account";
-import { planSync } from "@ikuzo/anime/sync-plan";
 import { holdBulkRemovals as holdRemovals } from "@ikuzo/anime/sync-queue";
-import type { TrackerAccount, TrackerId, TrackerSession, RemoteEntry } from "@ikuzo/anime/trackers";
+import type { ListChange, RemoteEntry, TrackerAccount, TrackerId, TrackerSession } from "@ikuzo/anime/trackers";
 import { TRACKER_LABELS } from "@ikuzo/anime/trackers";
 import type { ExternalIds } from "@ikuzo/anime/types";
 import { getRandomBytes } from "expo-crypto";
 import * as WebBrowser from "expo-web-browser";
 
-import { connectedTrackers, useAccounts } from "./accounts";
-import type { HoldReason, SyncOp } from "./accounts";
+import { connectedTrackers, mainTracker, mirrorTrackers, useAccounts } from "./accounts";
+import type { SyncOp } from "./accounts";
+import { saveUndoSnapshot } from "./backup";
 import { onLibraryChange } from "./library-events";
 import type { LibraryChange } from "./library-events";
 import type { LibraryEntry } from "./library-types";
 import { clearSession, getSession, setSession } from "./secrets";
-import { getEntries, getEntry, library } from "./store";
+import { getEntries, library } from "./store";
 import { ANILIST_CLIENT_ID, ANILIST_REDIRECT, MAL_CLIENT_ID, MAL_REDIRECT } from "./trackers-config";
+
+/*
+ * Sync model: the main account (AniList or MyAnimeList) owns the list.
+ * - Edits in Ikuzo are written locally at once and queued for the main account (and copied to the
+ *   other connected account, which is never read back).
+ * - A pull makes the library equal the main account's list. Changes still queued, or sent while
+ *   the list was downloading, are laid over it so a pull never undoes them.
+ * - Without accounts the list lives only on the phone and nothing syncs.
+ */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FLUSH_DELAY_MS = 1500;
 /** Removals wait this long before they are sent, so Undo can still cancel them. */
 export const UNDO_WINDOW_MS = 10_000;
-/** More removals than this for one service at once are held until the user confirms them. */
+/** More removals than this for one account at once are held until the user confirms them. */
 const BULK_REMOVE_LIMIT = 5;
-/** More shows than this to add to a service at once (connecting to a big list) need the user's OK. */
-const BULK_ADD_LIMIT = 5;
+/**
+ * A pull that would remove more than this many shows (and this share of the list) from Ikuzo
+ * waits for the user's OK: it is more likely an API hiccup or another account than real removals.
+ */
+const BULK_LOCAL_DELETE_MIN = 5;
+const BULK_LOCAL_DELETE_SHARE = 0.25;
 const RETRY_BASE_MS = 30_000;
 const RETRY_MAX_MS = 15 * 60 * 1000;
 /** Coming back to the app syncs again when the last sync is older than this. */
@@ -45,6 +60,12 @@ const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_CLIENT_ERROR = 400;
 const HTTP_SERVER_ERROR = 500;
 const HTTP_UNAUTHORIZED = 401;
+
+/**
+ * Changes sent to the main account recently. A pull whose download started before one was sent
+ * may not show it yet, so it is laid over the list until a later pull has seen it.
+ */
+let recentlySent: { change: PendingChange; at: number }[] = [];
 
 let flushing = false;
 let flushAgain = false;
@@ -73,6 +94,12 @@ let malRefresh: Promise<TrackerSession> | undefined;
 const refreshMal = async (refreshToken: string): Promise<TrackerSession> => {
   malRefresh ??= (async () => {
     try {
+      // A caller that read the session before the previous renewal finished would hold a
+      // refresh token MAL has already replaced; the stored session is the renewed one.
+      const stored = await getSession("mal");
+      if (stored !== undefined && stored.refreshToken !== refreshToken && stored.expiresAt - Date.now() >= DAY_MS) {
+        return stored;
+      }
       const refreshed = await refreshMalSession(MAL_CLIENT_ID, refreshToken);
       await setSession("mal", refreshed);
       return refreshed;
@@ -162,10 +189,7 @@ const scheduleFlush = (delay: number): void => {
   }, delay);
 };
 
-/**
- * Holds removals when there are suspiciously many for one service at once, so a mistake
- * (or a bug) can never empty someone's AniList or MyAnimeList without them confirming it.
- */
+/** Holds removals when there are suspiciously many for one account at once (see holdBulkRemovals). */
 const holdBulkRemovals = (): void => {
   useAccounts.getState().setQueue((queue) => holdRemovals(queue, BULK_REMOVE_LIMIT));
 };
@@ -178,7 +202,9 @@ const removeOp = (op: SyncOp): void => {
     );
 };
 
-/** Sends queued changes that are due. A failing service is skipped until the retry; others carry on. */
+const toPending = (op: SyncOp): PendingChange => ({ change: op.change, ids: op.ids, key: op.key, kind: op.kind });
+
+/** Sends queued changes that are due. A failing account is skipped until the retry; others carry on. */
 export const flush = async (): Promise<void> => {
   if (flushing) {
     flushAgain = true;
@@ -193,6 +219,7 @@ export const flush = async (): Promise<void> => {
     holdBulkRemovals();
     const connected = new Set(connectedTrackers());
     const blocked = new Set<TrackerId>(useAccounts.getState().needsSignIn);
+    const main = mainTracker();
     const now = Date.now();
     for (const op of useAccounts.getState().queue.toSorted((a, b) => a.at - b.at)) {
       if (op.held !== undefined || !connected.has(op.tracker) || blocked.has(op.tracker)) {
@@ -203,13 +230,12 @@ export const flush = async (): Promise<void> => {
         continue;
       }
       try {
-        // Changes go out one at a time and in order, so the service ends up with the latest one.
+        // Changes go out one at a time and in order, so the account ends up with the latest one.
         // oxlint-disable-next-line no-await-in-loop
-        const exists = await sendOp(op);
+        await sendOp(op);
         removeOp(op);
-        if (op.kind === "save") {
-          // A show the service does not list is marked as such, so it is not offered again.
-          library.markTracker(op.key, op.tracker, exists ? Date.now() : 0);
+        if (op.tracker === main) {
+          recentlySent.push({ at: Date.now(), change: toPending(op) });
         }
       } catch (error) {
         const label = TRACKER_LABELS[op.tracker];
@@ -244,56 +270,83 @@ export const flush = async (): Promise<void> => {
   }
 };
 
-const fullChange = (entry: LibraryEntry) => ({ progress: entry.progress, score: entry.score, status: entry.status });
+const fullChange = (entry: LibraryEntry): ListChange => ({
+  progress: entry.progress,
+  score: entry.score,
+  status: entry.status,
+});
 
-/** Turns a change made in Ikuzo into queued ops for every connected service that should get it. */
-const queueChange = (change: LibraryChange): void => {
-  const { entry } = change;
-  const { enqueue } = useAccounts.getState();
+const saveOp = (entry: LibraryEntry, tracker: TrackerId, change: ListChange, at: number): SyncOp => ({
+  at,
+  change,
+  ids: entry.anime.ids,
+  key: entry.key,
+  kind: "save",
+  title: entry.anime.title,
+  tracker,
+});
+
+/**
+ * Undo after a delete: the pending removals are cancelled, so the accounts keep the show as it is.
+ * Only where a removal already went out is the show added back.
+ */
+const queueRestore = (entry: LibraryEntry): void => {
+  const { enqueue, queue, setQueue } = useAccounts.getState();
+  const pending = new Set(queue.filter((op) => op.key === entry.key && op.kind === "remove").map((op) => op.tracker));
+  setQueue((current) => current.filter((op) => !(op.key === entry.key && op.kind === "remove")));
   const now = Date.now();
   for (const tracker of connectedTrackers()) {
-    // A show removed on the service stays removed there unless it is added again in Ikuzo.
-    const removedThere = entry.trackers?.[tracker] === 0;
-    if (change.kind === "remove") {
-      if (!removedThere) {
-        enqueue({
-          at: now,
-          ids: entry.anime.ids,
-          key: entry.key,
-          kind: "remove",
-          notBefore: now + UNDO_WINDOW_MS,
-          title: entry.anime.title,
-          tracker,
-        });
-      }
-    } else if (change.isNew || !removedThere) {
-      const neverThere = entry.trackers?.[tracker] === undefined;
-      enqueue({
-        at: now,
-        change: change.isNew || neverThere ? fullChange(entry) : change.change,
-        ids: entry.anime.ids,
-        key: entry.key,
-        kind: "save",
-        title: entry.anime.title,
-        tracker,
-      });
+    if (!pending.has(tracker)) {
+      enqueue(saveOp(entry, tracker, fullChange(entry), now));
     }
   }
   scheduleFlush(FLUSH_DELAY_MS);
 };
 
-/** Sends every list change made in Ikuzo to the connected services. */
+/** Turns a change made in Ikuzo into queued ops for the main account and the copy account. */
+const queueChange = (change: LibraryChange): void => {
+  const main = mainTracker();
+  if (main === undefined) {
+    // No accounts: the list lives on the phone only.
+    return;
+  }
+  if (change.kind === "restore") {
+    queueRestore(change.entry);
+    return;
+  }
+  const { entry } = change;
+  const { enqueue } = useAccounts.getState();
+  const now = Date.now();
+  for (const tracker of [main, ...mirrorTrackers()]) {
+    if (change.kind === "remove") {
+      enqueue({
+        at: now,
+        ids: entry.anime.ids,
+        key: entry.key,
+        kind: "remove",
+        notBefore: now + UNDO_WINDOW_MS,
+        title: entry.anime.title,
+        tracker,
+      });
+    } else {
+      // The copy account is never read, so it may not have the show yet: it always gets every field.
+      const fields = change.isNew || tracker !== main ? fullChange(entry) : change.change;
+      enqueue(saveOp(entry, tracker, fields, now));
+    }
+  }
+  scheduleFlush(FLUSH_DELAY_MS);
+};
+
+/** Sends every list change made in Ikuzo to the connected accounts. */
 export const startSyncWatcher = (): (() => void) => onLibraryChange(queueChange);
 
-// ── Held changes (need the user's OK) ───────────────────────────────────────
-
-/** Sends a group of held changes. */
-export const approveHeld = (tracker: TrackerId, reason: HoldReason): void => {
+/** Sends a group of held removals. */
+export const approveHeldRemovals = (tracker: TrackerId): void => {
   useAccounts
     .getState()
     .setQueue((queue) =>
       queue.map((op) =>
-        op.tracker === tracker && op.held === reason
+        op.tracker === tracker && op.held !== undefined
           ? { ...op, approved: true, held: undefined, notBefore: undefined }
           : op
       )
@@ -301,77 +354,96 @@ export const approveHeld = (tracker: TrackerId, reason: HoldReason): void => {
   void flush();
 };
 
-/**
- * Drops a group of held changes. Held additions are not offered again. Held removals are
- * cancelled: the shows stay on the service and come back into Ikuzo with a fresh sync.
- */
-export const discardHeld = (tracker: TrackerId, reason: HoldReason): void => {
-  const { queue, setQueue } = useAccounts.getState();
-  const dropped = queue.filter((op) => op.tracker === tracker && op.held === reason);
-  setQueue((current) => current.filter((op) => !(op.tracker === tracker && op.held === reason)));
-  if (reason === "bulk-add") {
-    for (const op of dropped) {
-      library.markTracker(op.key, tracker, 0);
-    }
-  } else {
-    // oxlint-disable-next-line no-use-before-define
-    void pullQuietly();
-  }
+/** Cancels held removals: the shows stay on the account and come back into Ikuzo with a sync. */
+export const discardHeldRemovals = (tracker: TrackerId): void => {
+  useAccounts.getState().setQueue((queue) => queue.filter((op) => !(op.tracker === tracker && op.held !== undefined)));
+  // oxlint-disable-next-line no-use-before-define
+  void pullQuietly();
 };
 
-// ── Incoming lists ──────────────────────────────────────────────────────────
+// ── Incoming list ───────────────────────────────────────────────────────────
 
 export interface PullSummary {
   added: number;
   updated: number;
-  sent: number;
-  /** Shows waiting for the user's OK before they are added to a service, by service. */
-  toAdd: Partial<Record<TrackerId, number>>;
-  /** Shows removed on a service since the last sync (kept in Ikuzo). */
-  removedRemotely: number;
+  removed: number;
+  /** Shows missing from the account that wait for the user's OK before they leave Ikuzo. */
+  heldRemovals: number;
 }
 
-const queueAdditions = (missing: { key: string; tracker: TrackerId }[]): Partial<Record<TrackerId, number>> => {
-  const { enqueue, queue } = useAccounts.getState();
-  const held: Partial<Record<TrackerId, number>> = {};
-  const now = Date.now();
-  // Shows that already have a change on its way (added in Ikuzo while offline) are not "offered".
-  const pending = new Set(queue.map((op) => `${op.tracker}|${op.key}`));
-  const offered = missing.filter((item) => !pending.has(`${item.tracker}|${item.key}`));
-  for (const tracker of new Set(offered.map((item) => item.tracker))) {
-    const items = offered.filter((item) => item.tracker === tracker);
-    const hold = items.length > BULK_ADD_LIMIT;
-    for (const item of items) {
-      const entry = getEntry(item.key);
-      if (entry !== undefined) {
-        enqueue({
-          at: now,
-          change: fullChange(entry),
-          held: hold ? "bulk-add" : undefined,
-          ids: entry.anime.ids,
-          key: entry.key,
-          kind: "save",
-          title: entry.anime.title,
-          tracker,
-        });
-      }
+const EMPTY_SUMMARY: PullSummary = { added: 0, heldRemovals: 0, removed: 0, updated: 0 };
+
+/** The main account's list, with sign-in problems recorded for Settings. */
+const downloadList = async (tracker: TrackerId): Promise<RemoteEntry[]> => {
+  const { setNeedsSignIn } = useAccounts.getState();
+  try {
+    const account = await accountFor(tracker);
+    const list = await account.list();
+    setNeedsSignIn(tracker, false);
+    return list;
+  } catch (error) {
+    if (isAuthProblem(error)) {
+      setNeedsSignIn(tracker, true);
     }
-    if (hold) {
-      held[tracker] = items.length;
-    }
+    throw error;
   }
-  return held;
+};
+
+/** Changes the main account may not show yet: queued ones and ones sent since `since`. */
+const pendingChanges = (tracker: TrackerId, since: number): PendingChange[] => [
+  ...recentlySent.filter((item) => item.at >= since).map((item) => item.change),
+  ...useAccounts
+    .getState()
+    .queue.filter((op) => op.tracker === tracker)
+    .map(toPending),
+];
+
+const pullOnce = async ({ allowBulkRemoval = false } = {}): Promise<PullSummary> => {
+  const tracker = mainTracker();
+  if (tracker === undefined) {
+    return EMPTY_SUMMARY;
+  }
+  const { setHeldDeletes, setStatus } = useAccounts.getState();
+  setStatus({ lastError: undefined, syncing: true });
+  const startedAt = Date.now();
+  try {
+    const list = await downloadList(tracker);
+    const local = getEntries();
+    const plan = planPull(local, list, pendingChanges(tracker, startedAt), Date.now());
+    const suspicious =
+      plan.deletes.length > BULK_LOCAL_DELETE_MIN && plan.deletes.length > local.length * BULK_LOCAL_DELETE_SHARE;
+    const holdDeletes = suspicious && !allowBulkRemoval;
+    await library.applyPull({ ...plan, deletes: holdDeletes ? [] : plan.deletes });
+    setHeldDeletes(holdDeletes ? { keys: plan.deletes, tracker } : undefined);
+    // This pull saw everything sent before it started.
+    recentlySent = recentlySent.filter((item) => item.at >= startedAt);
+    setStatus({ lastSyncAt: Date.now() });
+    return {
+      added: plan.inserts.length,
+      heldRemovals: holdDeletes ? plan.deletes.length : 0,
+      removed: holdDeletes ? 0 : plan.deletes.length,
+      updated: plan.updates.length,
+    };
+  } catch (error) {
+    setStatus({
+      lastError: isAuthProblem(error) ? errorMessage(error) : `${TRACKER_LABELS[tracker]}: ${errorMessage(error)}`,
+    });
+    throw error;
+  } finally {
+    setStatus({ syncing: false });
+    // Also sends (or holds) changes queued earlier.
+    await flush();
+  }
 };
 
 /** The sync that is running or last ran; the next one waits for it. */
 let lastPull: Promise<unknown> = Promise.resolve();
 
 /**
- * Downloads the lists of the connected accounts, merges them into the library (newest change
- * wins), then sends each service what it is missing. Syncs never overlap: one that is asked for
- * while another runs starts when it is done.
+ * Makes the library equal the main account's list (keeping changes still on their way). Syncs
+ * never overlap: one asked for while another runs starts when it is done.
  */
-export const pull = async (trackers: TrackerId[] = connectedTrackers()): Promise<PullSummary> => {
+export const pull = async (options: { allowBulkRemoval?: boolean } = {}): Promise<PullSummary> => {
   const previous = lastPull;
   const run = (async () => {
     try {
@@ -379,80 +451,18 @@ export const pull = async (trackers: TrackerId[] = connectedTrackers()): Promise
     } catch {
       // The earlier sync's error was already reported to its caller.
     }
-    // oxlint-disable-next-line no-use-before-define
-    return await pullOnce(trackers);
+    return await pullOnce(options);
   })();
   lastPull = run;
   return await run;
-};
-
-const pullOnce = async (trackers: TrackerId[]): Promise<PullSummary> => {
-  const { enqueue, setNeedsSignIn, setStatus } = useAccounts.getState();
-  const summary: PullSummary = { added: 0, removedRemotely: 0, sent: 0, toAdd: {}, updated: 0 };
-  if (trackers.length === 0) {
-    return summary;
-  }
-  setStatus({ lastError: undefined, syncing: true });
-  try {
-    const lists: Partial<Record<TrackerId, RemoteEntry[]>> = {};
-    const errors: string[] = [];
-    for (const tracker of trackers) {
-      try {
-        // oxlint-disable-next-line no-await-in-loop
-        const account = await accountFor(tracker);
-        // oxlint-disable-next-line no-await-in-loop
-        lists[tracker] = await account.list();
-        setNeedsSignIn(tracker, false);
-      } catch (error) {
-        if (isAuthProblem(error)) {
-          setNeedsSignIn(tracker, true);
-        }
-        errors.push(isAuthProblem(error) ? errorMessage(error) : `${TRACKER_LABELS[tracker]}: ${errorMessage(error)}`);
-      }
-    }
-    if (Object.keys(lists).length > 0) {
-      const removed = useAccounts
-        .getState()
-        .queue.filter((op) => op.kind === "remove")
-        .map((op) => op.ids);
-      const plan = planSync(getEntries(), lists, Date.now(), { removed });
-      await library.applySyncPlan(plan.inserts, plan.updates);
-      const now = Date.now();
-      for (const push of plan.pushes) {
-        enqueue({
-          at: now,
-          change: push.change,
-          ids: push.ids,
-          key: push.key,
-          kind: "save",
-          title: getEntry(push.key)?.anime.title ?? push.key,
-          tracker: push.tracker,
-        });
-      }
-      summary.added = plan.inserts.length;
-      summary.updated = plan.updates.filter((item) => item.values !== undefined).length;
-      summary.sent = plan.pushes.length;
-      summary.removedRemotely = plan.removedRemotely.length;
-      summary.toAdd = queueAdditions(plan.missing);
-      setStatus({ lastSyncAt: Date.now() });
-    }
-    // Also sends (or holds) changes queued earlier, even when no list could be downloaded.
-    await flush();
-    if (errors.length > 0) {
-      setStatus({ lastError: errors.join("\n") });
-    }
-    return summary;
-  } finally {
-    setStatus({ syncing: false });
-  }
 };
 
 /** Background sync (app start, pull-to-refresh, back to the app): errors are stored for Settings to show. */
 export const pullQuietly = async (): Promise<void> => {
   try {
     await pull();
-  } catch (error) {
-    useAccounts.getState().setStatus({ lastError: errorMessage(error) });
+  } catch {
+    // pullOnce stored the error for Settings.
   }
 };
 
@@ -466,33 +476,19 @@ export const syncOnForeground = (): void => {
   }
 };
 
-/**
- * Reads someone's public list without signing in and adds the shows that are not in the library
- * yet. Shows already in the library are left as they are, and nothing is sent anywhere.
- */
-export const previewPublicList = async (tracker: TrackerId, userName: string): Promise<RemoteEntry[]> => {
-  const account = tracker === "anilist" ? createAniListAccount() : createMalAccount(MAL_CLIENT_ID);
-  const list = await account.list(userName.trim());
-  const plan = planSync(getEntries(), { [tracker]: list }, Date.now());
-  const fresh = new Set(plan.inserts.map((item) => item.key));
-  return list.filter((item) => fresh.has(`${item.anime.source}:${item.anime.id}`));
+/** Removes the held shows from Ikuzo too (the account no longer has them). */
+export const approveHeldDeletes = async (): Promise<void> => {
+  const { heldDeletes, setHeldDeletes } = useAccounts.getState();
+  if (heldDeletes !== undefined) {
+    await saveUndoSnapshot();
+    await library.removeLocally(heldDeletes.keys);
+    setHeldDeletes(undefined);
+  }
 };
 
-export const importPublicList = async (shows: RemoteEntry[]): Promise<number> => {
-  const inserts = shows
-    .filter((item) => getEntry(`${item.anime.source}:${item.anime.id}`) === undefined)
-    .map((item) => ({
-      anime: item.anime,
-      key: `${item.anime.source}:${item.anime.id}`,
-      progress: item.progress,
-      score: item.score,
-      status: item.status,
-      // Someone else's list: never marks the shows as being on the user's own accounts.
-      trackers: {},
-      updatedAt: item.updatedAt > 0 ? item.updatedAt : Date.now(),
-    }));
-  await library.applySyncPlan(inserts, []);
-  return inserts.length;
+/** Keeps the held shows in Ikuzo for now; the next sync asks again if they are still missing. */
+export const dismissHeldDeletes = (): void => {
+  useAccounts.getState().setHeldDeletes(undefined);
 };
 
 // ── Connecting accounts ─────────────────────────────────────────────────────
@@ -513,14 +509,24 @@ const signInMal = async (): Promise<TrackerSession | undefined> => {
   return await exchangeMalCode({ ...request, code: parseMalRedirect(result.url, state) });
 };
 
+/** What connecting an account found, for the screen to ask the right question. */
+export type ConnectResult =
+  | { kind: "cancelled" }
+  /** First account and the phone's list was empty (or the same): the account's list is shown now. */
+  | { kind: "synced"; summary: PullSummary }
+  /** First account, but the phone has its own list: upload it or replace it with the account's? */
+  | { kind: "choose"; localShows: number; accountShows: number; toUpload: number }
+  /** A second account: it only receives a copy of changes. Copy the whole list to it now? */
+  | { kind: "copy"; shows: number };
+
 /**
- * Signs in, then merges the account's list into the library. Returns false when
- * the user closed the sign-in page.
+ * Signs in. The first account becomes the main one; what happens to a list already on the phone
+ * is the user's choice (uploadLocalList or replaceWithAccountList). A second account becomes the copy.
  */
-export const connect = async (tracker: TrackerId): Promise<PullSummary | false> => {
+export const connect = async (tracker: TrackerId): Promise<ConnectResult> => {
   const session = tracker === "anilist" ? await signInAniList() : await signInMal();
   if (session === undefined) {
-    return false;
+    return { kind: "cancelled" };
   }
   const account =
     tracker === "anilist"
@@ -529,16 +535,72 @@ export const connect = async (tracker: TrackerId): Promise<PullSummary | false> 
   // Profile first: a session is only stored for an account that answers.
   const profile = await account.profile();
   await setSession(tracker, session);
-  const { profiles, setNeedsSignIn, setProfile, setStatus } = useAccounts.getState();
-  // Reconnecting as someone else: what was on the old account says nothing about the new one.
+  const { profiles, setMain, setNeedsSignIn, setProfile, setQueue, setStatus } = useAccounts.getState();
   const previous = profiles[tracker];
   if (previous !== undefined && previous.id !== profile.id) {
-    await library.clearTrackerMarks(tracker);
+    // Signed in as someone else: changes meant for the other account are not sent to this one.
+    setQueue((queue) => queue.filter((op) => op.tracker !== tracker));
   }
+  const hadMain = mainTracker();
   setProfile(tracker, profile);
   setNeedsSignIn(tracker, false);
   setStatus({ lastError: undefined });
-  return await pull([tracker]);
+
+  if (hadMain !== undefined && hadMain !== tracker) {
+    return { kind: "copy", shows: getEntries().length };
+  }
+  setMain(tracker);
+  const local = getEntries();
+  if (local.length === 0 || previous?.id === profile.id) {
+    return { kind: "synced", summary: await pull() };
+  }
+  const list = await downloadList(tracker);
+  return {
+    accountShows: list.length,
+    kind: "choose",
+    localShows: local.length,
+    toUpload: planUpload(local, list).length,
+  };
+};
+
+/** Adds the phone's shows that the main account does not have to it, then shows the account's list. */
+export const uploadLocalList = async (): Promise<PullSummary> => {
+  const tracker = mainTracker();
+  if (tracker === undefined) {
+    return EMPTY_SUMMARY;
+  }
+  const missing = planUpload(getEntries(), await downloadList(tracker));
+  const { enqueue } = useAccounts.getState();
+  const now = Date.now();
+  for (const entry of missing) {
+    enqueue(saveOp(entry, tracker, fullChange(entry), now));
+  }
+  // Queued additions stay in the library while they upload; everything else follows the account.
+  return await pull({ allowBulkRemoval: true });
+};
+
+/** Replaces the phone's list with the main account's list (the old one can be restored for a day). */
+export const replaceWithAccountList = async (): Promise<PullSummary> => {
+  await saveUndoSnapshot();
+  return await pull({ allowBulkRemoval: true });
+};
+
+/** Copies every show to the copy account (it may have none of them yet). */
+export const copyListTo = (tracker: TrackerId): number => {
+  const { enqueue } = useAccounts.getState();
+  const now = Date.now();
+  const entries = getEntries();
+  for (const entry of entries) {
+    enqueue(saveOp(entry, tracker, fullChange(entry), now));
+  }
+  void flush();
+  return entries.length;
+};
+
+/** Makes `tracker` the main account: Ikuzo then shows its list (the current one can be restored for a day). */
+export const switchMain = async (tracker: TrackerId): Promise<PullSummary> => {
+  useAccounts.getState().setMain(tracker);
+  return await replaceWithAccountList();
 };
 
 /** Changes for `tracker` still waiting to be sent. */
@@ -546,14 +608,23 @@ export const pendingFor = (tracker: TrackerId): number =>
   useAccounts.getState().queue.filter((op) => op.tracker === tracker).length;
 
 /**
- * Signs out. Unsent changes for the service are dropped, and the library forgets which shows
- * were on that account (another account may be connected next).
+ * Signs out and drops the account's unsent changes. Disconnecting the main account makes the
+ * copy account the main one (its list is then shown); without accounts the list stays on the phone.
  */
 export const disconnect = async (tracker: TrackerId): Promise<void> => {
+  const wasMain = mainTracker() === tracker;
   await clearSession(tracker);
-  const { setNeedsSignIn, setProfile, setQueue } = useAccounts.getState();
+  const { setHeldDeletes, setMain, setNeedsSignIn, setProfile, setQueue } = useAccounts.getState();
   setProfile(tracker, undefined);
   setNeedsSignIn(tracker, false);
   setQueue((queue) => queue.filter((op) => op.tracker !== tracker));
-  await library.clearTrackerMarks(tracker);
+  if (wasMain) {
+    setHeldDeletes(undefined);
+    recentlySent = [];
+    const [next] = connectedTrackers();
+    setMain(next);
+    if (next !== undefined) {
+      await replaceWithAccountList();
+    }
+  }
 };

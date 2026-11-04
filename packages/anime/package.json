@@ -19,8 +19,8 @@
     "./errors": "./src/errors.ts",
     "./auth-error": "./src/auth-error.ts",
     "./mal": "./src/mal.ts",
-    "./sync-plan": "./src/sync-plan.ts",
-    "./sync-queue": "./src/sync-queue.ts"
+    "./sync-queue": "./src/sync-queue.ts",
+    "./account-sync": "./src/account-sync.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

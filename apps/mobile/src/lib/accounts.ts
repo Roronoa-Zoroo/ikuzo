@@ -17,6 +17,13 @@ interface AccountsState {
   /** Accounts whose token was rejected; they keep their queued changes until signed in again. */
   needsSignIn: TrackerId[];
   syncing: boolean;
+  /** The account whose list Ikuzo shows. The other connected account only receives a copy of changes. */
+  main?: TrackerId;
+  /**
+   * Shows a sync found missing from the main account, when there were suspiciously many: they
+   * stay in Ikuzo until the user confirms (an account switch or an API hiccup must not empty the list).
+   */
+  heldDeletes?: { tracker: TrackerId; keys: string[] };
 }
 
 interface AccountsActions {
@@ -25,6 +32,8 @@ interface AccountsActions {
   setQueue: (update: (queue: SyncOp[]) => SyncOp[]) => void;
   setStatus: (status: Partial<Pick<AccountsState, "lastSyncAt" | "lastError" | "syncing">>) => void;
   setNeedsSignIn: (tracker: TrackerId, needed: boolean) => void;
+  setMain: (tracker: TrackerId | undefined) => void;
+  setHeldDeletes: (held: AccountsState["heldDeletes"]) => void;
 }
 
 export const useAccounts = create<AccountsState & AccountsActions>()(
@@ -36,6 +45,12 @@ export const useAccounts = create<AccountsState & AccountsActions>()(
       needsSignIn: [],
       profiles: {},
       queue: [],
+      setHeldDeletes: (heldDeletes) => {
+        set({ heldDeletes });
+      },
+      setMain: (main) => {
+        set({ main });
+      },
       setNeedsSignIn: (tracker, needed) => {
         set((state) => ({
           needsSignIn: needed
@@ -59,14 +74,21 @@ export const useAccounts = create<AccountsState & AccountsActions>()(
         const saved = (persisted ?? {}) as Partial<AccountsState>;
         // Queues from older versions had another shape; they are dropped (the next sync re-sends differences).
         const queue = Array.isArray(saved.queue)
-          ? saved.queue.filter((op) => typeof op.tracker === "string" && typeof op.title === "string")
+          ? saved.queue.filter(
+              (op) =>
+                typeof op.tracker === "string" &&
+                typeof op.title === "string" &&
+                (op.held === undefined || op.held === "bulk-remove")
+            )
           : [];
         return { ...current, ...saved, queue, syncing: false };
       },
       name: "ikuzo-accounts",
-      partialize: ({ profiles, queue, lastSyncAt, lastError, needsSignIn }) => ({
+      partialize: ({ heldDeletes, lastError, lastSyncAt, main, needsSignIn, profiles, queue }) => ({
+        heldDeletes,
         lastError,
         lastSyncAt,
+        main,
         needsSignIn,
         profiles,
         queue,
@@ -88,6 +110,19 @@ export const connectedTrackers = (): TrackerId[] => {
     trackers.push("mal");
   }
   return trackers;
+};
+
+/** The account whose list Ikuzo shows, or undefined without accounts (the list lives on the phone). */
+export const mainTracker = (): TrackerId | undefined => {
+  const { main } = useAccounts.getState();
+  const connected = connectedTrackers();
+  return main !== undefined && connected.includes(main) ? main : connected[0];
+};
+
+/** Connected accounts that only receive a copy of the changes. */
+export const mirrorTrackers = (): TrackerId[] => {
+  const main = mainTracker();
+  return connectedTrackers().filter((tracker) => tracker !== main);
 };
 
 export interface HeldGroup {

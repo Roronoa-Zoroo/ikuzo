@@ -27,7 +27,6 @@ In **Settings → Accounts** you can connect AniList, MyAnimeList or both:
 - **Offline:** changes wait in a queue and are sent when the app is opened again or you pull to refresh.
 - **Expired sign-in:** changes stay queued until you tap **Reconnect**. Nothing is lost.
 - **Changes made on the websites** come in when the app starts or you pull to refresh Home.
-- **Import a public list** copies anyone's public list without signing in. It's read-only, so nothing is sent back.
 
 Sign-in uses each service's OAuth flow for apps: the implicit grant on AniList and PKCE on MyAnimeList. No client secret is involved, and tokens are kept in the Android Keystore or iOS Keychain. Shows removed on the website are not removed from Ikuzo, so a sync never deletes anything on your phone. Sign-in needs a development or release build; Expo Go cannot open the `ikuzo://` sign-in links.
 
@@ -40,7 +39,7 @@ Sign-in uses each service's OAuth flow for apps: the implicit grant on AniList a
 | AniDB (optional) | Episode titles and air dates |
 | [ARM](https://arm.haglund.dev) | Matching the same show across AniList, MyAnimeList and AniDB |
 
-You choose AniList or MyAnimeList for browsing in the side menu. Everything you track is stored on the device in SQLite (through TanStack DB) and, if you connect AniList or MyAnimeList, kept in sync with them: the newest change to a show wins, removals wait 10 seconds so they can be undone, and large batches of removals or additions wait for your OK in Settings. Restoring a backup never deletes anything on AniList or MyAnimeList and can be undone.
+You choose AniList or MyAnimeList for browsing in the side menu. Without an account your list lives on the phone (SQLite through TanStack DB). Connect AniList or MyAnimeList and that account owns the list: Ikuzo shows it, edits go straight to it (queued while offline), and a second connected account receives a copy of every change. Removals wait 10 seconds so they can be undone, large batches of removals wait for your OK, and notes, bookmarks and favourites stay on the phone and in backups.
 
 ### Enabling AniDB
 

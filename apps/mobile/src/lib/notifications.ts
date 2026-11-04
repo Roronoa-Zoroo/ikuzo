@@ -45,7 +45,7 @@ export interface Reminder {
 }
 
 /** Replaces every episode reminder with fresh ones for shows the user wants notifications for. */
-export const syncReminders = async (reminders: Reminder[]): Promise<void> => {
+const replaceReminders = async (reminders: Reminder[]): Promise<void> => {
   // Scheduled local notifications only exist on iOS and Android.
   if (Platform.OS === "web") {
     return;
@@ -88,6 +88,27 @@ export const syncReminders = async (reminders: Reminder[]): Promise<void> => {
       });
     })
   );
+};
+
+/** The reminder update that is running or last ran; the next one waits for it. */
+let lastUpdate: Promise<void> = Promise.resolve();
+
+/**
+ * Replaces the episode reminders. Updates run one after another: two overlapping runs would both
+ * cancel the old reminders and then both schedule, leaving every reminder twice.
+ */
+export const syncReminders = async (reminders: Reminder[]): Promise<void> => {
+  const previous = lastUpdate;
+  const run = (async () => {
+    try {
+      await previous;
+    } catch {
+      // A failed earlier update does not stop this one.
+    }
+    await replaceReminders(reminders);
+  })();
+  lastUpdate = run;
+  await run;
 };
 
 /**

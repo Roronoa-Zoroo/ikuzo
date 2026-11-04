@@ -1,4 +1,3 @@
-import type { TrackerMarks } from "@ikuzo/anime/sync-plan";
 import type { ListStatus } from "@ikuzo/anime/trackers";
 import type { AnimeSummary, Source } from "@ikuzo/anime/types";
 
@@ -14,11 +13,23 @@ export const WATCH_STATUS_LABELS: Record<WatchStatus, string> = {
   watching: "Watching",
 };
 
-export interface Note {
+/** A note as older versions stored it, inside its library entry. */
+export interface LegacyNote {
   id: string;
   episode?: number;
   text: string;
   createdAt: number;
+}
+
+/**
+ * A personal note about a show. Notes live in their own collection, so they stay when the show
+ * leaves the list (removed on AniList, for example) and need no list entry to exist.
+ */
+export interface Note extends LegacyNote {
+  /** Key of the show the note was written on ("anilist:1"). */
+  showKey: string;
+  malId?: number;
+  anilistId?: number;
 }
 
 export interface LibraryEntry {
@@ -33,11 +44,10 @@ export interface LibraryEntry {
   /** 0 = not scored, otherwise 1–10 */
   score: number;
   notify: boolean;
-  notes: Note[];
+  /** Only in data from older versions; moved to the notes collection on launch. */
+  notes?: LegacyNote[];
   addedAt: number;
   updatedAt: number;
-  /** When the show was last seen on each connected service; 0 = removed there. */
-  trackers?: TrackerMarks;
 }
 
 export interface SavedAnime {

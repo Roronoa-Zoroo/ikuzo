@@ -57,19 +57,13 @@ const removeWithUndo = (entry: LibraryEntry): void => {
 };
 
 /**
- * Asks before removing a show from the list: it also deletes the notes and, after a short
- * delay that Undo can cancel, the entry on connected AniList / MyAnimeList accounts.
+ * Asks before removing a show from the list. After a short delay that Undo can cancel, it is
+ * also removed on the connected AniList / MyAnimeList accounts. Notes about it are kept.
  */
 export const confirmRemove = (entry: LibraryEntry, title: string, onRemoved?: () => void): void => {
-  const notes = entry.notes.length;
   const synced = connectedTrackers().length > 0;
-  const details = [
-    notes > 0 ? `${notes} ${notes === 1 ? "note" : "notes"} will be deleted.` : undefined,
-    synced ? "It is also removed from your connected accounts." : undefined,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  Alert.alert(`Remove ${title}?`, details === "" ? undefined : details, [
+  const details = synced ? "It is also removed from your connected accounts." : undefined;
+  Alert.alert(`Remove ${title}?`, details, [
     { style: "cancel", text: "Cancel" },
     {
       onPress: () => {
@@ -82,13 +76,13 @@ export const confirmRemove = (entry: LibraryEntry, title: string, onRemoved?: ()
   ]);
 };
 
-export const deleteNoteWithUndo = (key: string, noteId: string): void => {
-  const note = library.deleteNote(key, noteId);
+export const deleteNoteWithUndo = (noteId: string): void => {
+  const note = library.deleteNote(noteId);
   if (note !== undefined) {
     showToast("Note deleted", {
       label: "Undo",
       onPress: () => {
-        library.restoreNote(key, note);
+        library.restoreNote(note);
       },
     });
   }

@@ -7,7 +7,7 @@ import * as SystemUI from "expo-system-ui";
 import { useEffect, useMemo, useState } from "react";
 import { AppState } from "react-native";
 
-import { ToastHost } from "@/components/toast";
+import { showToast, ToastHost } from "@/components/toast";
 import { useAccounts } from "@/lib/accounts";
 import { whenLibraryReady } from "@/lib/db";
 import { openAnime } from "@/lib/nav";
@@ -114,21 +114,25 @@ const TrackerSync = () => {
   return null;
 };
 
+type LoadState = "loading" | "ready" | "failed";
+
 const RootLayout = () => {
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
-    const show = () => {
-      setReady(true);
-      void SplashScreen.hideAsync();
-    };
     const load = async () => {
+      let next: LoadState = "ready";
       try {
         await whenLibraryReady();
       } catch {
-        // Even if loading fails the app opens (an empty library, not a frozen splash).
+        next = "failed";
       }
-      show();
+      setState(next);
+      void SplashScreen.hideAsync();
+      if (next === "failed") {
+        // Without its library the app must not sync (a pull would see an empty list) or touch reminders.
+        showToast("Your list could not be loaded. Restart Ikuzo; nothing was synced or changed.");
+      }
     };
     void load();
   }, []);
@@ -138,7 +142,7 @@ const RootLayout = () => {
       {/* expo-status-bar takes a colour scheme name here, not a style object. */}
       {/* oxlint-disable-next-line react/style-prop-object */}
       <StatusBar style="light" />
-      {ready ? (
+      {state === "ready" ? (
         <>
           <ReminderSync />
           <TrackerSync />

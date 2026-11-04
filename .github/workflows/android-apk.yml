@@ -10,11 +10,14 @@ on:
       - "packages/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/android-apk.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
 
 # Read-only by default; only the release job may write (create the pre-release).
 permissions:
   contents: read
+
+# Third-party actions are pinned to commits (tags can be moved); the comment names the version.
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -26,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: pnpm
@@ -66,27 +69,27 @@ jobs:
       CCACHE_COMPILERCHECK: content
       CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: pnpm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           # Save the Gradle cache on this branch too, not only on the default branch.
           cache-read-only: false
 
       # Compiled native code is reused between builds (the bulk of the build time).
-      - uses: hendrikmuhs/ccache-action@v1.2
+      - uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639 # v1.2
         with:
           key: android-native-${{ runner.os }}
           max-size: 2G
@@ -114,7 +117,7 @@ jobs:
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/ikuzo-${{ github.run_number }}.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ikuzo-apk
           path: apps/mobile/dist/*.apk
@@ -126,9 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ikuzo-apk
           path: apk
@@ -140,7 +143,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Launch on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           arch: x86_64
@@ -148,7 +151,7 @@ jobs:
           disable-animations: true
           script: bash .github/scripts/android-smoke.sh apk io.github.roronoazoroo.ikuzo smoke
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: smoke-test
@@ -160,13 +163,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ikuzo-apk
           path: dist
 
       - name: Publish pre-release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}

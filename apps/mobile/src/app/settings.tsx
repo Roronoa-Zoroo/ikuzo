@@ -1,3 +1,4 @@
+import { TRACKER_LABELS } from "@ikuzo/anime/trackers";
 import { SOURCE_LABELS, SOURCES } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
@@ -13,7 +14,7 @@ import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { showToast } from "@/components/toast";
 import { Touchable } from "@/components/touchable";
-import { connectedTrackers } from "@/lib/accounts";
+import { mainTracker, useAccounts } from "@/lib/accounts";
 import { createBackup, parseBackup, previewRestore, restoreBackup, undoableRestoreAt, undoRestore } from "@/lib/backup";
 import type { ParsedBackup, RestoreMode, RestorePreview } from "@/lib/backup";
 import { pickBackupFile, shareBackupFile } from "@/lib/backup-file";
@@ -100,7 +101,7 @@ const runRestore = async (backup: ParsedBackup, mode: RestoreMode) => {
 };
 
 /** What a restore will do, in plain words, before anything changes. */
-const describeRestore = (backup: ParsedBackup, preview: RestorePreview, synced: boolean): string =>
+const describeRestore = (backup: ParsedBackup, preview: RestorePreview): string =>
   [
     `The backup has ${plural(preview.shows, "show")}${
       backup.exportedAt === undefined ? "" : ` (saved ${new Date(backup.exportedAt).toLocaleDateString()})`
@@ -112,9 +113,6 @@ const describeRestore = (backup: ParsedBackup, preview: RestorePreview, synced: 
       ? `"Replace" makes your list exactly like the backup${
           preview.onlyHere > 0 ? `, removing ${plural(preview.onlyHere, "show")} that are not in it` : ""
         }.`
-      : undefined,
-    synced
-      ? "Nothing is deleted on AniList or MyAnimeList. The next sync keeps the newest copy of each show: removed shows that are on your accounts come back, and restored shows missing there are added to them (you are asked first when there are many)."
       : undefined,
     "You can undo the restore for a day.",
   ]
@@ -139,9 +137,7 @@ const confirmRestore = (text: string) => {
     }
     Alert.alert(
       `Remove ${plural(preview.onlyHere, "show")}?`,
-      `They are not in the backup${
-        preview.notesLost > 0 ? `, and ${plural(preview.notesLost, "note")} would be deleted with them` : ""
-      }. You can undo this for a day.`,
+      "They are not in the backup. Notes are kept. You can undo this for a day.",
       [
         { style: "cancel", text: "Cancel" },
         {
@@ -154,7 +150,7 @@ const confirmRestore = (text: string) => {
       ]
     );
   };
-  Alert.alert("Restore backup?", describeRestore(backup, preview, connectedTrackers().length > 0), [
+  Alert.alert("Restore backup?", describeRestore(backup, preview), [
     { style: "cancel", text: "Cancel" },
     { onPress: confirmReplace, style: "destructive", text: "Replace" },
     {
@@ -204,7 +200,7 @@ const UndoRestoreButton = () => {
       onPress={() => {
         Alert.alert(
           "Undo last restore?",
-          `Your list goes back to exactly how it was before the restore on ${when}. Changes made since then are lost.`,
+          `Your list goes back to exactly how it was before ${when} (the last restore or switch to an account's list). Changes made since then are lost.`,
           [
             { style: "cancel", text: "Cancel" },
             {
@@ -218,6 +214,50 @@ const UndoRestoreButton = () => {
         );
       }}
     />
+  );
+};
+
+/**
+ * With an account connected the list belongs to it, so restoring a phone backup (or undoing a
+ * list replacement) is only offered without accounts: otherwise the next sync would undo it.
+ */
+const BackupSection = () => {
+  const main = useAccounts((state) =>
+    state.profiles.anilist === undefined && state.profiles.mal === undefined ? undefined : mainTracker()
+  );
+  return (
+    <Section title="Backup">
+      <AppText variant="caption">
+        {main === undefined
+          ? "Your list lives only on this phone. Export it now and then, or before switching phones. Backups also keep your notes, bookmarks and favourites."
+          : `Your list lives on ${TRACKER_LABELS[main]}. Backups keep your notes, bookmarks and favourites too. To restore a list from a backup, disconnect your accounts first.`}
+      </AppText>
+      <Button
+        label="Export backup file"
+        onPress={() => {
+          void exportBackup();
+        }}
+      />
+      {main === undefined ? (
+        <>
+          <Button
+            label="Restore from file"
+            onPress={() => {
+              void restoreFromFile();
+            }}
+            tone="danger"
+          />
+          <Button
+            label="Restore from clipboard"
+            onPress={() => {
+              void restoreFromClipboard();
+            }}
+            tone="danger"
+          />
+          <UndoRestoreButton />
+        </>
+      ) : null}
+    </Section>
   );
 };
 
@@ -280,33 +320,7 @@ const SettingsScreen = () => {
           </Row>
         </Section>
 
-        <Section title="Backup">
-          <AppText variant="caption">
-            Your list lives on this device (and on AniList or MyAnimeList when connected). Export it now and then, or
-            before switching phones.
-          </AppText>
-          <Button
-            label="Export backup file"
-            onPress={() => {
-              void exportBackup();
-            }}
-          />
-          <Button
-            label="Restore from file"
-            onPress={() => {
-              void restoreFromFile();
-            }}
-            tone="danger"
-          />
-          <Button
-            label="Restore from clipboard"
-            onPress={() => {
-              void restoreFromClipboard();
-            }}
-            tone="danger"
-          />
-          <UndoRestoreButton />
-        </Section>
+        <BackupSection />
 
         <Section title="About">
           <AppText variant="caption">

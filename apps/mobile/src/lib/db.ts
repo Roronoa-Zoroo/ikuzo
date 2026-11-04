@@ -3,7 +3,15 @@ import { createCollection } from "@tanstack/react-db";
 
 import { kv } from "./kv";
 import { DEFAULT_SETTINGS, WATCH_STATUSES } from "./library-types";
-import type { FavoriteCharacter, LibraryEntry, Note, SavedAnime, SettingsRow, WatchStatus } from "./library-types";
+import type {
+  FavoriteCharacter,
+  LegacyNote,
+  LibraryEntry,
+  Note,
+  SavedAnime,
+  SettingsRow,
+  WatchStatus,
+} from "./library-types";
 import { persistedOptions } from "./persistence";
 
 /** The user's library, stored with TanStack DB (SQLite on the phone). */
@@ -16,6 +24,7 @@ export const favoriteCharactersCollection = createCollection(
   persistedOptions<FavoriteCharacter>("library-favorite-characters", (f) => f.key)
 );
 export const settingsCollection = createCollection(persistedOptions<SettingsRow>("settings", (s) => s.id));
+export const notesCollection = createCollection(persistedOptions<Note>("library-notes", (n) => n.id));
 
 export const SETTINGS_ID = "settings";
 
@@ -25,6 +34,7 @@ const ALL = [
   favoriteShowsCollection,
   favoriteCharactersCollection,
   settingsCollection,
+  notesCollection,
 ] as const;
 
 /** Adds the indexed id fields to an entry whose show snapshot changed. */
@@ -62,12 +72,34 @@ const isAnime = (value: unknown): value is AnimeSummary =>
 const toNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-const toNotes = (value: unknown): Note[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (note): note is Note => isRecord(note) && typeof note.id === "string" && typeof note.text === "string"
-      )
-    : [];
+const isLegacyNote = (note: unknown): note is LegacyNote =>
+  isRecord(note) && typeof note.id === "string" && typeof note.text === "string";
+
+const toNotes = (value: unknown): LegacyNote[] => (Array.isArray(value) ? value.filter(isLegacyNote) : []);
+
+/** A note of an older version (stored in its entry) as a row of the notes collection. */
+export const noteFromEntry = (entry: LibraryEntry, note: LegacyNote): Note => ({
+  anilistId: entry.anime.ids.anilist,
+  createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
+  episode: typeof note.episode === "number" ? note.episode : undefined,
+  id: note.id,
+  malId: entry.anime.ids.mal,
+  showKey: entry.key,
+  text: note.text,
+});
+
+export const parseNote = (key: string, value: unknown): Note | undefined =>
+  isLegacyNote(value) && isRecord(value) && typeof value.showKey === "string"
+    ? {
+        anilistId: typeof value.anilistId === "number" ? value.anilistId : undefined,
+        createdAt: typeof value.createdAt === "number" ? value.createdAt : Date.now(),
+        episode: typeof value.episode === "number" ? value.episode : undefined,
+        id: key,
+        malId: typeof value.malId === "number" ? value.malId : undefined,
+        showKey: value.showKey,
+        text: value.text,
+      }
+    : undefined;
 
 /**
  * Reads a library entry from untrusted JSON (old storage, backups). Anything malformed is
@@ -87,7 +119,6 @@ export const parseEntry = (key: string, value: unknown): LibraryEntry | undefine
     progress: Math.max(0, Math.round(toNumber(value.progress, 0))),
     score: Math.min(10, Math.max(0, Math.round(toNumber(value.score, 0)))),
     status: value.status,
-    trackers: isRecord(value.trackers) ? value.trackers : undefined,
     updatedAt: toNumber(value.updatedAt, now),
   });
 };
@@ -127,7 +158,7 @@ export const parseSettings = (value: unknown): SettingsRow => {
 };
 
 /** Parses every value of a stored record, dropping invalid rows and repeated keys (first one wins). */
-export const parseRecord = <T extends { key: string }>(
+export const parseRecord = <T extends { key: string } | { id: string }>(
   record: unknown,
   parse: (key: string, value: unknown) => T | undefined
 ): T[] => {
@@ -137,8 +168,11 @@ export const parseRecord = <T extends { key: string }>(
   const rows = new Map<string, T>();
   for (const [key, value] of Object.entries(record)) {
     const parsed = parse(key, value);
-    if (parsed !== undefined && !rows.has(parsed.key)) {
-      rows.set(parsed.key, parsed);
+    if (parsed !== undefined) {
+      const rowKey = "key" in parsed ? parsed.key : parsed.id;
+      if (!rows.has(rowKey)) {
+        rows.set(rowKey, parsed);
+      }
     }
   }
   return [...rows.values()];
@@ -187,6 +221,29 @@ const migrateLegacy = async (): Promise<void> => {
   await kv.setItem(MIGRATED_KEY, String(Date.now()));
 };
 
+/**
+ * Moves notes kept inside library entries (older versions, old backups) into the notes
+ * collection. Safe to run on every launch: notes already moved are skipped.
+ */
+export const moveNotesOutOfEntries = async (): Promise<void> => {
+  const holders = entriesCollection.toArray.filter((entry) => (entry.notes?.length ?? 0) > 0);
+  if (holders.length === 0) {
+    return;
+  }
+  const notes = holders.flatMap((entry) => (entry.notes ?? []).map((note) => noteFromEntry(entry, note)));
+  await insertMissing(notesCollection, notes, (note) => note.id);
+  await entriesCollection
+    .update(
+      holders.map((entry) => entry.key),
+      (drafts) => {
+        for (const draft of drafts) {
+          draft.notes = [];
+        }
+      }
+    )
+    .when("settled");
+};
+
 let ready: Promise<void> | undefined;
 
 /** Loads every collection from disk (and migrates old data) before the app reads the library. */
@@ -198,6 +255,7 @@ export const whenLibraryReady = async (): Promise<void> => {
       })
     );
     await migrateLegacy();
+    await moveNotesOutOfEntries();
   })();
   await ready;
 };

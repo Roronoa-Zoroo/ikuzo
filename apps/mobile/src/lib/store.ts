@@ -1,6 +1,5 @@
-import { diffList, isEmptyChange } from "@ikuzo/anime/sync-plan";
-import type { PlannedInsert, PlannedUpdate } from "@ikuzo/anime/sync-plan";
-import type { ListChange, TrackerId } from "@ikuzo/anime/trackers";
+import { diffList, isEmptyChange } from "@ikuzo/anime/account-sync";
+import type { PullPlan } from "@ikuzo/anime/account-sync";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 import { useMemo } from "react";
@@ -10,6 +9,7 @@ import {
   entriesCollection,
   favoriteCharactersCollection,
   favoriteShowsCollection,
+  notesCollection,
   SETTINGS_ID,
   settingsCollection,
   withIdFields,
@@ -62,6 +62,36 @@ export const stripVirtual = <T extends object>(row: T): T => {
   }
   return copy;
 };
+
+/**
+ * Only the summary fields of a show. Detail screens pass the full AnimeDetail (synopsis,
+ * relations, links), which would bloat every entry, bookmark and backup.
+ */
+export const summaryOf = (anime: AnimeSummary): AnimeSummary => ({
+  airedFrom: anime.airedFrom,
+  airedTo: anime.airedTo,
+  banner: anime.banner,
+  broadcast: anime.broadcast,
+  durationMinutes: anime.durationMinutes,
+  episodes: anime.episodes,
+  format: anime.format,
+  genres: anime.genres,
+  id: anime.id,
+  ids: anime.ids,
+  image: anime.image,
+  isAdult: anime.isAdult,
+  members: anime.members,
+  nextEpisode: anime.nextEpisode,
+  score: anime.score,
+  season: anime.season,
+  source: anime.source,
+  status: anime.status,
+  synonyms: anime.synonyms,
+  title: anime.title,
+  titleEnglish: anime.titleEnglish,
+  titleNative: anime.titleNative,
+  year: anime.year,
+});
 
 const newId = (): string => `${Date.now().toString(ID_RADIX)}${Math.random().toString(ID_RADIX).slice(2)}`;
 
@@ -222,6 +252,29 @@ export const useIsFavoriteCharacter = (source: Source, id: number): boolean => {
   return data !== undefined;
 };
 
+/** Notes about a show, newest first, matched across AniList and MyAnimeList ids. */
+export const useNotes = (anime: EntryLookup): Note[] => {
+  const key = animeKey(anime);
+  const { mal, anilist } = anime.ids;
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ note: notesCollection })
+        .where(({ note }) => {
+          let match = eq(note.showKey, key);
+          if (mal !== undefined) {
+            match = or(match, eq(note.malId, mal));
+          }
+          if (anilist !== undefined) {
+            match = or(match, eq(note.anilistId, anilist));
+          }
+          return match;
+        })
+        .orderBy(({ note }) => note.createdAt, "desc"),
+  });
+  return data;
+};
+
 // ── Writing ────────────────────────────────────────────────────────────────
 
 type ListPatch = Partial<Pick<LibraryEntry, "status" | "progress" | "score">>;
@@ -262,9 +315,11 @@ const nextListValues = (
 
 /** Keeps the entry's snapshot from its own source, but learns the other service's ids. */
 const mergeSnapshot = (current: AnimeSummary, incoming: AnimeSummary): AnimeSummary =>
-  current.source === incoming.source
-    ? { ...current, ...incoming, ids: { ...current.ids, ...incoming.ids } }
-    : { ...current, ids: { ...incoming.ids, ...current.ids } };
+  summaryOf(
+    current.source === incoming.source
+      ? { ...current, ...incoming, ids: { ...current.ids, ...incoming.ids } }
+      : { ...current, ids: { ...incoming.ids, ...current.ids } }
+  );
 
 interface Write {
   when: (state: "settled") => Promise<unknown>;
@@ -302,9 +357,8 @@ const save = (anime: AnimeSummary, patch: ListPatch = {}): LibraryEntry => {
     const entry = withIdFields({
       ...values,
       addedAt: now,
-      anime,
+      anime: summaryOf(anime),
       key: animeKey(anime),
-      notes: [],
       notify: false,
       updatedAt: now,
     });
@@ -348,7 +402,7 @@ const increment = (key: string): void => {
   }
 };
 
-/** Removes a show (and its notes). Returns the removed entry so the caller can offer Undo. */
+/** Removes a show from the list (its notes stay). Returns the removed entry so the caller can offer Undo. */
 const remove = (key: string): LibraryEntry | undefined => {
   const entry = getEntry(key);
   if (entry === undefined) {
@@ -364,8 +418,7 @@ const restoreEntry = (entry: LibraryEntry): void => {
     return;
   }
   const clean = withIdFields(stripVirtual(entry));
-  const change: ListChange = { progress: clean.progress, score: clean.score, status: clean.status };
-  afterWrite(entriesCollection.insert(clean), { change, entry: clean, isNew: true, kind: "save" });
+  afterWrite(entriesCollection.insert(clean), { entry: clean, kind: "restore" });
 };
 
 /** Newer show data (episode counts, air dates) for entries; list values are untouched and nothing syncs. */
@@ -378,102 +431,88 @@ const refreshSnapshots = (shows: AnimeSummary[]): void => {
   }
 };
 
-/** Applies a sync plan from AniList / MyAnimeList in two bulk writes. Nothing is sent back from here. */
-const applySyncPlan = async (inserts: PlannedInsert[], updates: PlannedUpdate[]): Promise<void> => {
-  const fresh = inserts.filter((item) => getEntry(item.key) === undefined);
-  const pending: Promise<unknown>[] = [];
+/**
+ * Makes the library match the main account's list (planned by planPull). Nothing is announced
+ * to sync: this is the account's own data. Notification switches and notes are kept.
+ */
+const applyPull = async (plan: Pick<PullPlan, "inserts" | "updates" | "deletes">): Promise<void> => {
+  const writes: Promise<unknown>[] = [];
+  const fresh = plan.inserts.filter((item) => !entriesCollection.has(item.key));
   if (fresh.length > 0) {
     const rows = fresh.map((item) =>
       withIdFields({
         addedAt: item.updatedAt,
-        anime: item.anime,
+        anime: summaryOf(item.anime),
         key: item.key,
-        notes: [],
         notify: false,
         progress: item.progress,
         score: item.score,
         status: item.status,
-        trackers: item.trackers,
         updatedAt: item.updatedAt,
       })
     );
-    pending.push(entriesCollection.insert(rows).when("settled"));
+    writes.push(entriesCollection.insert(rows).when("settled"));
   }
-  const byKey = new Map(updates.filter((item) => getEntry(item.key) !== undefined).map((item) => [item.key, item]));
-  if (byKey.size > 0) {
-    const transaction = entriesCollection.update([...byKey.keys()], (drafts) => {
+  const updates = new Map(
+    plan.updates.filter((item) => entriesCollection.has(item.key)).map((item) => [item.key, item])
+  );
+  if (updates.size > 0) {
+    const transaction = entriesCollection.update([...updates.keys()], (drafts) => {
       for (const draft of drafts) {
-        const item = byKey.get(draft.key);
+        const item = updates.get(draft.key);
         if (item !== undefined) {
-          if (item.values !== undefined) {
-            Object.assign(draft, item.values);
-          }
-          draft.anime = { ...draft.anime, ids: item.ids };
-          draft.malId = item.ids.mal;
-          draft.anilistId = item.ids.anilist;
-          draft.trackers = item.trackers;
+          draft.status = item.status;
+          draft.progress = item.progress;
+          draft.score = item.score;
+          draft.updatedAt = item.updatedAt;
+          draft.anime = summaryOf(item.anime);
+          draft.malId = item.anime.ids.mal;
+          draft.anilistId = item.anime.ids.anilist;
         }
       }
     });
-    pending.push(transaction.when("settled"));
+    writes.push(transaction.when("settled"));
   }
-  await Promise.all(pending);
+  const deletes = plan.deletes.filter((key) => entriesCollection.has(key));
+  if (deletes.length > 0) {
+    writes.push(entriesCollection.delete(deletes).when("settled"));
+  }
+  await Promise.all(writes);
 };
 
-/** Records that a service now has (at > 0) or no longer has (0) the show. */
-const markTracker = (key: string, tracker: TrackerId, at: number): void => {
-  if (getEntry(key) !== undefined) {
-    afterWrite(
-      entriesCollection.update(key, (draft) => {
-        draft.trackers = { ...draft.trackers, [tracker]: at };
-      })
-    );
-  }
+/** Removes shows from the library only (the account already does not have them). */
+const removeLocally = async (keys: string[]): Promise<void> => {
+  await applyPull({ deletes: keys, inserts: [], updates: [] });
 };
 
-/** Forgets which shows were on a service (after signing out of it). */
-const clearTrackerMarks = async (tracker: TrackerId): Promise<void> => {
-  const keys = entriesCollection.toArray.filter((entry) => entry.trackers?.[tracker] !== undefined).map((e) => e.key);
-  if (keys.length > 0) {
-    await entriesCollection
-      .update(keys, (drafts) => {
-        for (const draft of drafts) {
-          const { [tracker]: _removed, ...rest } = draft.trackers ?? {};
-          draft.trackers = rest;
-        }
-      })
-      .when("settled");
-  }
-};
-
-const addNote = (key: string, text: string, episode?: number): void => {
-  const note: Note = { createdAt: Date.now(), episode, id: newId(), text };
+/** Adds a note about a show; the show does not have to be in the list. */
+const addNote = (anime: EntryLookup, text: string, episode?: number): void => {
   afterWrite(
-    entriesCollection.update(key, (draft) => {
-      draft.notes = [note, ...draft.notes];
+    notesCollection.insert({
+      anilistId: anime.ids.anilist,
+      createdAt: Date.now(),
+      episode,
+      id: newId(),
+      malId: anime.ids.mal,
+      showKey: animeKey(anime),
+      text,
     })
   );
 };
 
-const deleteNote = (key: string, noteId: string): Note | undefined => {
-  const note = getEntry(key)?.notes.find((item) => item.id === noteId);
-  if (note !== undefined) {
-    afterWrite(
-      entriesCollection.update(key, (draft) => {
-        draft.notes = draft.notes.filter((item) => item.id !== noteId);
-      })
-    );
+/** Deletes a note and returns it for Undo. */
+const deleteNote = (noteId: string): Note | undefined => {
+  const note = notesCollection.get(noteId);
+  if (note === undefined) {
+    return undefined;
   }
-  return note;
+  afterWrite(notesCollection.delete(noteId));
+  return stripVirtual(note);
 };
 
-const restoreNote = (key: string, note: Note): void => {
-  if (getEntry(key) !== undefined) {
-    afterWrite(
-      entriesCollection.update(key, (draft) => {
-        draft.notes = [note, ...draft.notes].toSorted((a, b) => b.createdAt - a.createdAt);
-      })
-    );
+const restoreNote = (note: Note): void => {
+  if (!notesCollection.has(note.id)) {
+    afterWrite(notesCollection.insert(note));
   }
 };
 
@@ -483,7 +522,7 @@ const toggleSaved = (collection: typeof bookmarksCollection, anime: AnimeSummary
     afterWrite(collection.delete(key));
     return false;
   }
-  afterWrite(collection.insert({ addedAt: Date.now(), anime, key }));
+  afterWrite(collection.insert({ addedAt: Date.now(), anime: summaryOf(anime), key }));
   return true;
 };
 
@@ -521,13 +560,12 @@ const setSettings = (patch: Partial<Settings>): void => {
 /** Every write to the library goes through these. */
 export const library = {
   addNote,
-  applySyncPlan,
-  clearTrackerMarks,
+  applyPull,
   deleteNote,
   increment,
-  markTracker,
   refreshSnapshots,
   remove,
+  removeLocally,
   restoreEntry,
   restoreNote,
   save,

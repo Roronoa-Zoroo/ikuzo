@@ -24,15 +24,6 @@ describe("mergeOp", () => {
     });
   });
 
-  it("never holds a change the user already made", () => {
-    const merged = mergeOp(op({ change: { progress: 1 } }), op({ at: 2, change: { progress: 1 }, held: "bulk-add" }));
-    expect(merged.held).toBeUndefined();
-  });
-
-  it("keeps a held addition held when the show is edited", () => {
-    expect(mergeOp(op({ held: "bulk-add" }), op({ at: 2, change: { progress: 3 } })).held).toBe("bulk-add");
-  });
-
   it("lets Undo replace a pending removal", () => {
     const merged = mergeOp(op({ held: "bulk-remove", kind: "remove" }), op({ at: 2, change: { progress: 3 } }));
     expect(merged).toMatchObject({ kind: "save" });

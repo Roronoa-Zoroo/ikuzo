@@ -6,8 +6,8 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
-import { deleteNoteWithUndo, ensureInLibrary } from "@/lib/episodes";
-import { library, useEntry } from "@/lib/store";
+import { deleteNoteWithUndo } from "@/lib/episodes";
+import { library, useEntry, useNotes } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -37,6 +37,7 @@ const styles = StyleSheet.create({
 /** Personal notes, optionally tied to an episode. */
 export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
   const entry = useEntry(anime);
+  const notes = useNotes(anime);
   const [text, setText] = useState("");
   const [episode, setEpisode] = useState(entry === undefined ? "" : String(entry.progress));
 
@@ -45,9 +46,8 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
     if (trimmed === "") {
       return;
     }
-    const key = ensureInLibrary(anime);
     const number = Number(episode);
-    library.addNote(key, trimmed, episode === "" || Number.isNaN(number) ? undefined : number);
+    library.addNote(anime, trimmed, episode === "" || Number.isNaN(number) ? undefined : number);
     setText("");
   };
 
@@ -81,7 +81,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
         </Touchable>
       </Section>
 
-      {(entry?.notes ?? []).map((note) => (
+      {notes.map((note) => (
         <Section key={note.id}>
           <View style={styles.noteHeader}>
             <AppText variant="caption">
@@ -92,7 +92,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
               accessibilityLabel="Delete note"
               hitSlop={8}
               onPress={() => {
-                deleteNoteWithUndo(entry?.key ?? "", note.id);
+                deleteNoteWithUndo(note.id);
               }}
             >
               <Ionicons color={colors.textMuted} name="trash-outline" size={18} />

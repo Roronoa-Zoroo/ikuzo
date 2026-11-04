@@ -8,7 +8,9 @@ import type { LibraryEntry } from "./library-types";
  */
 export type LibraryChange =
   | { kind: "save"; entry: LibraryEntry; change: ListChange; isNew: boolean }
-  | { kind: "remove"; entry: LibraryEntry };
+  | { kind: "remove"; entry: LibraryEntry }
+  /** Undo of a removal: the entry is back exactly as it was. */
+  | { kind: "restore"; entry: LibraryEntry };
 
 type Listener = (change: LibraryChange) => void;
 

@@ -6,8 +6,11 @@ import {
   entriesCollection,
   favoriteCharactersCollection,
   favoriteShowsCollection,
+  noteFromEntry,
+  notesCollection,
   parseCharacter,
   parseEntry,
+  parseNote,
   parseRecord,
   parseSaved,
   parseSettings,
@@ -15,8 +18,8 @@ import {
   settingsCollection,
 } from "./db";
 import { kv } from "./kv";
-import type { FavoriteCharacter, LibraryEntry, SavedAnime, SettingsRow } from "./library-types";
-import { stripVirtual } from "./store";
+import type { FavoriteCharacter, LibraryEntry, Note, SavedAnime, SettingsRow } from "./library-types";
+import { findEntry, stripVirtual } from "./store";
 
 /**
  * Backups are plain JSON, readable by every Ikuzo version. Restoring is local only: it never
@@ -36,6 +39,7 @@ export interface Backup {
   bookmarks: Record<string, SavedAnime>;
   favoriteShows: Record<string, SavedAnime>;
   favoriteCharacters: Record<string, FavoriteCharacter>;
+  notes: Record<string, Note>;
   settings: SettingsRow;
 }
 
@@ -46,6 +50,7 @@ export interface ParsedBackup {
   bookmarks: SavedAnime[];
   favoriteShows: SavedAnime[];
   favoriteCharacters: FavoriteCharacter[];
+  notes: Note[];
   settings: SettingsRow;
 }
 
@@ -61,7 +66,6 @@ export interface RestorePreview {
   newerHere: number;
   /** Shows only in the current library; removed in "replace" mode. */
   onlyHere: number;
-  notesLost: number;
 }
 
 const byKey = <T extends { key: string }>(rows: T[]): Record<string, T> =>
@@ -74,18 +78,15 @@ export const createBackup = (): Backup => ({
   exportedAt: new Date().toISOString(),
   favoriteCharacters: byKey(favoriteCharactersCollection.toArray),
   favoriteShows: byKey(favoriteShowsCollection.toArray),
+  notes: Object.fromEntries(notesCollection.toArray.map((note) => [note.id, stripVirtual(note)])),
   settings: parseSettings(settingsCollection.get(SETTINGS_ID)),
   version: BACKUP_VERSION,
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-/**
- * Reads a backup made by any Ikuzo version, dropping entries that do not look right.
- * Which shows were on which AniList / MyAnimeList account is only kept for the undo snapshot:
- * a backup may come from another device or account, where that information is wrong.
- */
-export const parseBackup = (text: string, { keepSyncMarks = false } = {}): ParsedBackup | undefined => {
+/** Reads a backup made by any Ikuzo version, dropping entries that do not look right. */
+export const parseBackup = (text: string): ParsedBackup | undefined => {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -95,24 +96,23 @@ export const parseBackup = (text: string, { keepSyncMarks = false } = {}): Parse
   if (!isRecord(value) || value.app !== "ikuzo" || !isRecord(value.entries)) {
     return undefined;
   }
+  const entries = parseRecord(value.entries, parseEntry);
+  // Old backups kept notes inside their entries.
+  const legacyNotes = entries.flatMap((entry) => (entry.notes ?? []).map((note) => noteFromEntry(entry, note)));
+  const notes = new Map([...legacyNotes, ...parseRecord(value.notes, parseNote)].map((note) => [note.id, note]));
   return {
     bookmarks: parseRecord(value.bookmarks, parseSaved),
-    entries: parseRecord(value.entries, parseEntry).map((entry) =>
-      keepSyncMarks ? entry : { ...entry, trackers: undefined }
-    ),
+    entries,
     exportedAt: typeof value.exportedAt === "string" ? value.exportedAt : undefined,
     favoriteCharacters: parseRecord(value.favoriteCharacters, parseCharacter),
     favoriteShows: parseRecord(value.favoriteShows, parseSaved),
+    notes: [...notes.values()],
     settings: parseSettings(value.settings),
   };
 };
 
 const sameEntry = (a: LibraryEntry, b: LibraryEntry): boolean =>
-  a.status === b.status &&
-  a.progress === b.progress &&
-  a.score === b.score &&
-  a.notify === b.notify &&
-  a.notes.length === b.notes.length;
+  a.status === b.status && a.progress === b.progress && a.score === b.score && a.notify === b.notify;
 
 /** Bookmarks and favourites have nothing to update: merging only adds the missing ones. */
 const addOnly = (): boolean => false;
@@ -121,7 +121,27 @@ const addOnly = (): boolean => false;
 const backupIsNewer = (current: LibraryEntry, incoming: LibraryEntry): boolean =>
   incoming.updatedAt > current.updatedAt;
 
-export const previewRestore = (backup: ParsedBackup): RestorePreview => {
+/**
+ * Gives each backup entry the key of the same show in this library, matched by MyAnimeList or
+ * AniList id like everywhere else: a backup may have the show as "mal:5" where this phone has
+ * "anilist:1". Without this a restore would create a second entry for the same show.
+ */
+const matchLibraryKeys = (entries: LibraryEntry[]): LibraryEntry[] => {
+  const seen = new Map<string, LibraryEntry>();
+  for (const entry of entries) {
+    const local = findEntry(entry.anime);
+    const matched = local === undefined ? entry : { ...entry, anime: local.anime, key: local.key };
+    const other = seen.get(matched.key);
+    // The same show twice in the backup: the newer copy counts.
+    if (other === undefined || matched.updatedAt > other.updatedAt) {
+      seen.set(matched.key, matched);
+    }
+  }
+  return [...seen.values()];
+};
+
+export const previewRestore = (parsed: ParsedBackup): RestorePreview => {
+  const backup = { ...parsed, entries: matchLibraryKeys(parsed.entries) };
   const incoming = new Map(backup.entries.map((entry) => [entry.key, entry]));
   let added = 0;
   let changed = 0;
@@ -143,7 +163,6 @@ export const previewRestore = (backup: ParsedBackup): RestorePreview => {
     added,
     changed,
     newerHere,
-    notesLost: onlyHere.reduce((sum, entry) => sum + entry.notes.length, 0),
     onlyHere: onlyHere.length,
     shows: backup.entries.length,
   };
@@ -179,8 +198,12 @@ const mirror = <T extends { key: string }>(
   }
 };
 
-/** Writes the whole backup in one transaction: either all of it lands on disk or none of it. */
-const applyBackup = async (backup: ParsedBackup, mode: RestoreMode): Promise<void> => {
+/**
+ * Writes the backup in one TanStack DB transaction. Each collection is written to disk on its
+ * own, so a failure part-way can leave some written: restoreBackup then puts the snapshot back.
+ */
+const applyBackup = async (parsed: ParsedBackup, mode: RestoreMode): Promise<void> => {
+  const backup = { ...parsed, entries: matchLibraryKeys(parsed.entries) };
   const transaction = createTransaction({
     autoCommit: false,
     mutationFn: async ({ transaction: tx }) => {
@@ -189,6 +212,7 @@ const applyBackup = async (backup: ParsedBackup, mode: RestoreMode): Promise<voi
       await favoriteShowsCollection.utils.acceptMutations(tx);
       await favoriteCharactersCollection.utils.acceptMutations(tx);
       await settingsCollection.utils.acceptMutations(tx);
+      await notesCollection.utils.acceptMutations(tx);
     },
   });
   transaction.mutate(() => {
@@ -197,6 +221,20 @@ const applyBackup = async (backup: ParsedBackup, mode: RestoreMode): Promise<voi
     mirror(bookmarksCollection, backup.bookmarks, mode, addOnly);
     mirror(favoriteShowsCollection, backup.favoriteShows, mode, addOnly);
     mirror(favoriteCharactersCollection, backup.favoriteCharacters, mode, addOnly);
+    // Notes are only ever added or removed, never edited.
+    for (const note of backup.notes) {
+      if (!notesCollection.has(note.id)) {
+        notesCollection.insert(note);
+      }
+    }
+    if (mode === "replace") {
+      const keep = new Set(backup.notes.map((note) => note.id));
+      for (const note of notesCollection.toArray) {
+        if (!keep.has(note.id)) {
+          notesCollection.delete(note.id);
+        }
+      }
+    }
     if (mode === "replace") {
       if (settingsCollection.has(SETTINGS_ID)) {
         settingsCollection.update(SETTINGS_ID, (draft) => {
@@ -237,10 +275,27 @@ const readSnapshot = async (): Promise<{ at: number; text: string } | undefined>
  * (for a day). Nothing is sent to AniList or MyAnimeList from here: the next sync compares as
  * usual and the newest copy of each show wins. Deletions are never sent.
  */
-export const restoreBackup = async (backup: ParsedBackup, mode: RestoreMode): Promise<void> => {
-  const snapshot: UndoSnapshot = { at: Date.now(), backup: createBackup() };
+/** Keeps the library as it is now, so the next big change (restore, switching accounts) can be undone for a day. */
+export const saveUndoSnapshot = async (): Promise<Backup> => {
+  const current = createBackup();
+  const snapshot: UndoSnapshot = { at: Date.now(), backup: current };
   await kv.setItem(UNDO_KEY, JSON.stringify(snapshot));
-  await applyBackup(backup, mode);
+  return current;
+};
+
+export const restoreBackup = async (backup: ParsedBackup, mode: RestoreMode): Promise<void> => {
+  const current = await saveUndoSnapshot();
+  try {
+    await applyBackup(backup, mode);
+  } catch (error) {
+    // Part of the backup may be on disk already: put the library back as it was.
+    const before = parseBackup(JSON.stringify(current));
+    if (before !== undefined) {
+      await applyBackup(before, "replace");
+    }
+    await kv.removeItem(UNDO_KEY);
+    throw error;
+  }
 };
 
 /** When the restore that can still be undone happened, if there is one. */
@@ -252,7 +307,7 @@ export const undoableRestoreAt = async (): Promise<number | undefined> => {
 /** Puts the library back exactly as it was before the last restore (within a day of it). */
 export const undoRestore = async (): Promise<boolean> => {
   const snapshot = await readSnapshot();
-  const backup = snapshot === undefined ? undefined : parseBackup(snapshot.text, { keepSyncMarks: true });
+  const backup = snapshot === undefined ? undefined : parseBackup(snapshot.text);
   if (backup === undefined) {
     return false;
   }
