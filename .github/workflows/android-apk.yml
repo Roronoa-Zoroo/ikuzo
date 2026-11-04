@@ -26,6 +26,15 @@ jobs:
     defaults:
       run:
         working-directory: apps/mobile
+    env:
+      # Route React Native's C++ builds through ccache; CMake picks these up.
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      # Paths differ between pnpm store hashes and runs; hash relative to the repo.
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +51,16 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Save the Gradle cache on this branch too, not only on the default branch.
+          cache-read-only: false
+
+      # Compiled native code is reused between builds (the bulk of the build time).
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-native-${{ runner.os }}
+          max-size: 2G
+          verbose: 1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -56,7 +75,9 @@ jobs:
       # arm64-v8a runs on practically every phone; x86_64 lets the emulator smoke test run it.
       - name: Build APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,x86_64
+        run: |
+          ./gradlew assembleRelease --no-daemon --build-cache -PreactNativeArchitectures=arm64-v8a,x86_64
+          ccache --show-stats
 
       - name: Name the APK
         run: |
