@@ -1,0 +1,25 @@
+{
+  "name": "@ikuzo/anime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed clients for MyAnimeList (Jikan), AniList and AniDB with one shared data model",
+  "type": "module",
+  "exports": {
+    "./types": "./src/types.ts",
+    "./http": "./src/http.ts",
+    "./jikan": "./src/jikan.ts",
+    "./anilist": "./src/anilist.ts",
+    "./anidb": "./src/anidb.ts",
+    "./ids": "./src/ids.ts",
+    "./airing": "./src/airing.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
