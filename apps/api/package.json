@@ -16,24 +16,24 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@better-auth/mongo-adapter": "^1.7.4",
-    "@better-auth/redis-storage": "^1.7.4",
-    "@hono/node-server": "^2.1.1",
+    "@better-auth/mongo-adapter": "^1.7.15",
+    "@better-auth/redis-storage": "^1.7.15",
+    "@hono/node-server": "^2.1.6",
     "@repo/db": "workspace:*",
     "@repo/email": "workspace:*",
     "@repo/runtime": "workspace:*",
     "@repo/storage": "workspace:*",
-    "@trpc/server": "^11.18.0",
-    "better-auth": "^1.7.4",
-    "hono": "^4.13.7",
+    "@trpc/server": "^11.23.0",
+    "better-auth": "^1.7.15",
+    "hono": "^4.13.16",
     "ioredis": "^6.0.0",
-    "mongodb": "^7.6.0",
+    "mongodb": "^7.8.0",
     "papr": "^17.1.1",
-    "zod": "^4.6.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   }
 }

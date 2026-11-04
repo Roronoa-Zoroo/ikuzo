@@ -19,14 +19,14 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1131.0",
-    "@aws-sdk/s3-request-presigner": "^3.1131.0",
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@aws-sdk/s3-request-presigner": "^3.1161.0",
     "@azure/core-auth": "^1.11.0",
-    "@azure/storage-blob": "^12.33.0"
+    "@azure/storage-blob": "^12.34.0"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   }
 }

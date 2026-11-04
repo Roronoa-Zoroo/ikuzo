@@ -28,12 +28,12 @@
   },
   "dependencies": {
     "@repo/runtime": "workspace:*",
-    "mongodb": "^7.6.0",
+    "mongodb": "^7.8.0",
     "papr": "^17.1.1"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   }
 }
