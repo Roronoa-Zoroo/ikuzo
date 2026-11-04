@@ -126,35 +126,50 @@ export const parseSettings = (value: unknown): SettingsRow => {
   };
 };
 
-export const parseRecord = <T>(record: unknown, parse: (key: string, value: unknown) => T | undefined): T[] =>
-  isRecord(record)
-    ? Object.entries(record).flatMap(([key, value]) => {
-        const parsed = parse(key, value);
-        return parsed === undefined ? [] : [parsed];
-      })
-    : [];
+/** Parses every value of a stored record, dropping invalid rows and repeated keys (first one wins). */
+export const parseRecord = <T extends { key: string }>(
+  record: unknown,
+  parse: (key: string, value: unknown) => T | undefined
+): T[] => {
+  if (!isRecord(record)) {
+    return [];
+  }
+  const rows = new Map<string, T>();
+  for (const [key, value] of Object.entries(record)) {
+    const parsed = parse(key, value);
+    if (parsed !== undefined && !rows.has(parsed.key)) {
+      rows.set(parsed.key, parsed);
+    }
+  }
+  return [...rows.values()];
+};
 
-/** Inserts rows and waits until they are written to disk. */
-const insertAll = async <T extends object>(
-  collection: { insert: (rows: T[]) => { when: (state: "settled") => Promise<unknown> } },
-  rows: T[]
-): Promise<void> => {
-  if (rows.length > 0) {
-    await collection.insert(rows).when("settled");
+interface Insertable<T> {
+  has: (key: string) => boolean;
+  insert: (rows: T[]) => { when: (state: "settled") => Promise<unknown> };
+}
+
+const byKey = (row: { key: string }): string => row.key;
+
+/** Inserts the rows that are not stored yet and waits until they are on disk. */
+const insertMissing = async <T>(collection: Insertable<T>, rows: T[], keyOf: (row: T) => string): Promise<void> => {
+  const missing = rows.filter((row) => !collection.has(keyOf(row)));
+  if (missing.length > 0) {
+    await collection.insert(missing).when("settled");
   }
 };
 
 /**
- * Copies the library of older versions into TanStack DB once. The old copy is left in place
- * as a fallback, so nothing is lost if this version has to be rolled back.
+ * Copies the library of older versions into TanStack DB. It is safe to run again: only rows
+ * that are not stored yet are added, so an interrupted migration finishes on the next launch
+ * without overwriting anything changed since. The old copy is left in place as a fallback.
  */
 const migrateLegacy = async (): Promise<void> => {
   if ((await kv.getItem(MIGRATED_KEY)) !== null) {
     return;
   }
   const raw = await kv.getItem(LEGACY_KEY);
-  const empty = ALL.every((collection) => collection.size === 0);
-  if (raw !== null && empty) {
+  if (raw !== null) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -163,11 +178,11 @@ const migrateLegacy = async (): Promise<void> => {
       return;
     }
     const state: LegacyState = isRecord(parsed) && isRecord(parsed.state) ? parsed.state : {};
-    await insertAll(entriesCollection, parseRecord(state.entries, parseEntry));
-    await insertAll(bookmarksCollection, parseRecord(state.bookmarks, parseSaved));
-    await insertAll(favoriteShowsCollection, parseRecord(state.favoriteShows, parseSaved));
-    await insertAll(favoriteCharactersCollection, parseRecord(state.favoriteCharacters, parseCharacter));
-    await insertAll(settingsCollection, [parseSettings(state.settings)]);
+    await insertMissing(entriesCollection, parseRecord(state.entries, parseEntry), byKey);
+    await insertMissing(bookmarksCollection, parseRecord(state.bookmarks, parseSaved), byKey);
+    await insertMissing(favoriteShowsCollection, parseRecord(state.favoriteShows, parseSaved), byKey);
+    await insertMissing(favoriteCharactersCollection, parseRecord(state.favoriteCharacters, parseCharacter), byKey);
+    await insertMissing(settingsCollection, [parseSettings(state.settings)], (row) => row.id);
   }
   await kv.setItem(MIGRATED_KEY, String(Date.now()));
 };

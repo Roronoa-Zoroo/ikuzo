@@ -89,3 +89,32 @@ export const syncReminders = async (reminders: Reminder[]): Promise<void> => {
     })
   );
 };
+
+/**
+ * Opens the anime of a tapped episode notification: one that launched the app, and any tapped
+ * while it runs. Returns the cleanup for the listener.
+ */
+export const handleNotificationTaps = (open: (key: string) => void): (() => void) => {
+  if (Platform.OS === "web") {
+    return () => {
+      // Web has no scheduled notifications to tap.
+    };
+  }
+  const handle = (response: Notifications.NotificationResponse | null) => {
+    const data = response?.notification.request.content.data;
+    if (
+      response?.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER &&
+      data?.kind === KIND &&
+      typeof data.key === "string"
+    ) {
+      open(data.key);
+      // Handled once: not again on the next launch.
+      Notifications.clearLastNotificationResponse();
+    }
+  };
+  handle(Notifications.getLastNotificationResponse());
+  const subscription = Notifications.addNotificationResponseReceivedListener(handle);
+  return () => {
+    subscription.remove();
+  };
+};

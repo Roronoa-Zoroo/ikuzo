@@ -106,12 +106,13 @@ const describeSummary = (summary: PullSummary, label: string): string =>
 
 const HOLD_TEXT: Record<HoldReason, (count: number, label: string) => string> = {
   "bulk-add": (count, label) => `${plural(count, "show")} from Ikuzo are not on your ${label} list yet.`,
-  "bulk-remove": (count, label) => `${plural(count, "show")} will be removed from your ${label} list.`,
+  "bulk-remove": (count, label) =>
+    `${plural(count, "show")} you deleted in Ikuzo will be removed from your ${label} list. Keeping them on ${label} brings them back into Ikuzo.`,
 };
 
 const HOLD_ACTIONS: Record<HoldReason, { approve: string; discard: string }> = {
   "bulk-add": { approve: "Add them", discard: "Don't add" },
-  "bulk-remove": { approve: "Remove there too", discard: "Keep them there" },
+  "bulk-remove": { approve: "Remove there too", discard: "Keep them" },
 };
 
 /** Big batches of changes wait here for an explicit OK before they reach a service. */

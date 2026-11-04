@@ -128,7 +128,7 @@ class ShowIndex {
     }
   }
 
-  find(ids: ExternalIds): string | undefined {
+  lookup(ids: ExternalIds): string | undefined {
     return (
       (ids.mal === undefined ? undefined : this.byMal.get(ids.mal)) ??
       (ids.anilist === undefined ? undefined : this.byAniList.get(ids.anilist))
@@ -149,7 +149,7 @@ const toWorking = (entry: SyncedEntry): Working => ({
 
 /** Folds one service's copy of a show into the working set (newest change wins). */
 const absorb = (working: Map<string, Working>, index: ShowIndex, item: RemoteEntry, now: number): string => {
-  const key = index.find(item.anime.ids) ?? entryKeyOf(item.anime);
+  const key = index.lookup(item.anime.ids) ?? entryKeyOf(item.anime);
   const changedAt = item.updatedAt > 0 ? item.updatedAt : now;
   let show = working.get(key);
   if (show === undefined) {
@@ -214,6 +214,15 @@ const recordShow = (plan: SyncPlan, show: Working, before: TrackerMarks): void =
   }
 };
 
+export interface PlanOptions {
+  /**
+   * Shows deleted in Ikuzo whose removal has not reached the services yet (waiting for Undo,
+   * offline, or held for the user's OK). Their remote copies are ignored, so a sync never
+   * brings a deleted show back.
+   */
+  removed?: readonly ExternalIds[];
+}
+
 /**
  * Plans one sync run. `lists` holds the full list downloaded from each service that answered;
  * services that failed are left out and keep their state for the next run.
@@ -221,13 +230,18 @@ const recordShow = (plan: SyncPlan, show: Working, before: TrackerMarks): void =
 export const planSync = (
   local: readonly SyncedEntry[],
   lists: Partial<Record<TrackerId, readonly RemoteEntry[]>>,
-  now: number
+  now: number,
+  options: PlanOptions = {}
 ): SyncPlan => {
   const working = new Map<string, Working>();
   const index = new ShowIndex();
   for (const entry of local) {
     working.set(entry.key, toWorking(entry));
     index.add(entry.key, entry.anime.ids);
+  }
+  const removed = new ShowIndex();
+  for (const [position, ids] of (options.removed ?? []).entries()) {
+    removed.add(String(position), ids);
   }
 
   const trackers = TRACKERS.filter((tracker) => lists[tracker] !== undefined);
@@ -236,6 +250,10 @@ export const planSync = (
     const seen = new Map<string, RemoteEntry>();
     remoteByTracker.set(tracker, seen);
     for (const item of lists[tracker] ?? []) {
+      // A show deleted here but still on the service is waiting for its removal to go out.
+      if (index.lookup(item.anime.ids) === undefined && removed.lookup(item.anime.ids) !== undefined) {
+        continue;
+      }
       const key = absorb(working, index, item, now);
       // A list can name the same show twice (AniList custom lists); the first one counts.
       if (!seen.has(key)) {

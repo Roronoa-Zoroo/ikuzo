@@ -11,11 +11,13 @@ import { useSideMenu } from "@/components/side-menu";
 import { EmptyState, ErrorState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
+import { ensureInLibrary } from "@/lib/episodes";
 import { formatAirTime } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useLibraryAiring, useSchedule } from "@/lib/queries";
-import { animeKey, entryKeyFor, library, useEntry, useSettings } from "@/lib/store";
+import { animeKey, library, useEntryLookup, useSettings } from "@/lib/store";
+import type { LibraryEntry } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
@@ -36,8 +38,8 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 
-const BellButton = ({ anime }: { anime: AnimeSummary }) => {
-  const entry = useEntry(anime);
+/** The entry comes from the list's shared lookup, so long lists do not run one query per row. */
+const BellButton = ({ anime, entry }: { anime: AnimeSummary; entry: LibraryEntry | undefined }) => {
   const active = entry?.notify === true;
 
   const toggle = async () => {
@@ -48,10 +50,7 @@ const BellButton = ({ anime }: { anime: AnimeSummary }) => {
       );
       return;
     }
-    if (entry === undefined) {
-      library.save(anime, { status: "planned" });
-    }
-    library.update(entryKeyFor(anime), { notify: !active });
+    library.update(ensureInLibrary(anime), { notify: !active });
   };
 
   return (
@@ -126,7 +125,7 @@ const MyShows = () => {
           showStatus={false}
           titleLines={2}
           posterLabel={`EP${item.episode}`}
-          trailing={<BellButton anime={item.entry.anime} />}
+          trailing={<BellButton anime={item.entry.anime} entry={item.entry} />}
         />
       )}
     />
@@ -136,6 +135,7 @@ const MyShows = () => {
 const DaySchedule = ({ day }: { day: number }) => {
   const { source } = useSettings();
   const schedule = useSchedule(source, day);
+  const lookup = useEntryLookup();
   const now = useNow();
   const rows = useMemo(
     () =>
@@ -179,7 +179,7 @@ const DaySchedule = ({ day }: { day: number }) => {
           showStatus={false}
           titleLines={2}
           posterLabel={item.next === undefined ? undefined : `EP${item.next.episode}`}
-          trailing={<BellButton anime={item.anime} />}
+          trailing={<BellButton anime={item.anime} entry={lookup(item.anime)} />}
         />
       )}
     />

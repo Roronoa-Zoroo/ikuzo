@@ -10,6 +10,7 @@ import {
   refreshMalSession,
 } from "@ikuzo/anime/mal-account";
 import { planSync } from "@ikuzo/anime/sync-plan";
+import { holdBulkRemovals as holdRemovals } from "@ikuzo/anime/sync-queue";
 import type { TrackerAccount, TrackerId, TrackerSession, RemoteEntry } from "@ikuzo/anime/trackers";
 import { TRACKER_LABELS } from "@ikuzo/anime/trackers";
 import type { ExternalIds } from "@ikuzo/anime/types";
@@ -166,23 +167,7 @@ const scheduleFlush = (delay: number): void => {
  * (or a bug) can never empty someone's AniList or MyAnimeList without them confirming it.
  */
 const holdBulkRemovals = (): void => {
-  const { setQueue } = useAccounts.getState();
-  setQueue((queue) => {
-    const pending = new Map<TrackerId, number>();
-    for (const op of queue) {
-      if (op.kind === "remove" && op.held === undefined && op.approved !== true) {
-        pending.set(op.tracker, (pending.get(op.tracker) ?? 0) + 1);
-      }
-    }
-    return queue.map((op) =>
-      op.kind === "remove" &&
-      op.held === undefined &&
-      op.approved !== true &&
-      (pending.get(op.tracker) ?? 0) > BULK_REMOVE_LIMIT
-        ? { ...op, held: "bulk-remove" }
-        : op
-    );
-  });
+  useAccounts.getState().setQueue((queue) => holdRemovals(queue, BULK_REMOVE_LIMIT));
 };
 
 const removeOp = (op: SyncOp): void => {
@@ -316,7 +301,10 @@ export const approveHeld = (tracker: TrackerId, reason: HoldReason): void => {
   void flush();
 };
 
-/** Drops a group of held changes: removals stay on the service, additions are not offered again. */
+/**
+ * Drops a group of held changes. Held additions are not offered again. Held removals are
+ * cancelled: the shows stay on the service and come back into Ikuzo with a fresh sync.
+ */
 export const discardHeld = (tracker: TrackerId, reason: HoldReason): void => {
   const { queue, setQueue } = useAccounts.getState();
   const dropped = queue.filter((op) => op.tracker === tracker && op.held === reason);
@@ -325,6 +313,9 @@ export const discardHeld = (tracker: TrackerId, reason: HoldReason): void => {
     for (const op of dropped) {
       library.markTracker(op.key, tracker, 0);
     }
+  } else {
+    // oxlint-disable-next-line no-use-before-define
+    void pullQuietly();
   }
 };
 
@@ -341,11 +332,14 @@ export interface PullSummary {
 }
 
 const queueAdditions = (missing: { key: string; tracker: TrackerId }[]): Partial<Record<TrackerId, number>> => {
-  const { enqueue } = useAccounts.getState();
+  const { enqueue, queue } = useAccounts.getState();
   const held: Partial<Record<TrackerId, number>> = {};
   const now = Date.now();
-  for (const tracker of new Set(missing.map((item) => item.tracker))) {
-    const items = missing.filter((item) => item.tracker === tracker);
+  // Shows that already have a change on its way (added in Ikuzo while offline) are not "offered".
+  const pending = new Set(queue.map((op) => `${op.tracker}|${op.key}`));
+  const offered = missing.filter((item) => !pending.has(`${item.tracker}|${item.key}`));
+  for (const tracker of new Set(offered.map((item) => item.tracker))) {
+    const items = offered.filter((item) => item.tracker === tracker);
     const hold = items.length > BULK_ADD_LIMIT;
     for (const item of items) {
       const entry = getEntry(item.key);
@@ -369,11 +363,30 @@ const queueAdditions = (missing: { key: string; tracker: TrackerId }[]): Partial
   return held;
 };
 
+/** The sync that is running or last ran; the next one waits for it. */
+let lastPull: Promise<unknown> = Promise.resolve();
+
 /**
  * Downloads the lists of the connected accounts, merges them into the library (newest change
- * wins), then sends each service what it is missing. One failing service does not stop the other.
+ * wins), then sends each service what it is missing. Syncs never overlap: one that is asked for
+ * while another runs starts when it is done.
  */
 export const pull = async (trackers: TrackerId[] = connectedTrackers()): Promise<PullSummary> => {
+  const previous = lastPull;
+  const run = (async () => {
+    try {
+      await previous;
+    } catch {
+      // The earlier sync's error was already reported to its caller.
+    }
+    // oxlint-disable-next-line no-use-before-define
+    return await pullOnce(trackers);
+  })();
+  lastPull = run;
+  return await run;
+};
+
+const pullOnce = async (trackers: TrackerId[]): Promise<PullSummary> => {
   const { enqueue, setNeedsSignIn, setStatus } = useAccounts.getState();
   const summary: PullSummary = { added: 0, removedRemotely: 0, sent: 0, toAdd: {}, updated: 0 };
   if (trackers.length === 0) {
@@ -398,7 +411,11 @@ export const pull = async (trackers: TrackerId[] = connectedTrackers()): Promise
       }
     }
     if (Object.keys(lists).length > 0) {
-      const plan = planSync(getEntries(), lists, Date.now());
+      const removed = useAccounts
+        .getState()
+        .queue.filter((op) => op.kind === "remove")
+        .map((op) => op.ids);
+      const plan = planSync(getEntries(), lists, Date.now(), { removed });
       await library.applySyncPlan(plan.inserts, plan.updates);
       const now = Date.now();
       for (const push of plan.pushes) {
@@ -512,7 +529,12 @@ export const connect = async (tracker: TrackerId): Promise<PullSummary | false> 
   // Profile first: a session is only stored for an account that answers.
   const profile = await account.profile();
   await setSession(tracker, session);
-  const { setNeedsSignIn, setProfile, setStatus } = useAccounts.getState();
+  const { profiles, setNeedsSignIn, setProfile, setStatus } = useAccounts.getState();
+  // Reconnecting as someone else: what was on the old account says nothing about the new one.
+  const previous = profiles[tracker];
+  if (previous !== undefined && previous.id !== profile.id) {
+    await library.clearTrackerMarks(tracker);
+  }
   setProfile(tracker, profile);
   setNeedsSignIn(tracker, false);
   setStatus({ lastError: undefined });

@@ -10,10 +10,11 @@ import { AppState } from "react-native";
 import { ToastHost } from "@/components/toast";
 import { useAccounts } from "@/lib/accounts";
 import { whenLibraryReady } from "@/lib/db";
-import { setupNotifications, syncReminders } from "@/lib/notifications";
+import { openAnime } from "@/lib/nav";
+import { handleNotificationTaps, setupNotifications, syncReminders } from "@/lib/notifications";
 import type { Reminder } from "@/lib/notifications";
 import { queryClient, useLibraryAiring } from "@/lib/queries";
-import { displayTitle, useSettings } from "@/lib/store";
+import { displayTitle, getEntry, useSettings } from "@/lib/store";
 import { pullQuietly, startSyncWatcher, syncOnForeground } from "@/lib/sync";
 import { colors } from "@/lib/theme";
 
@@ -59,6 +60,21 @@ const ReminderSync = () => {
     }
   }, [payload]);
 
+  return null;
+};
+
+/** Tapping "Episode 5 is out now" opens that anime. */
+const NotificationTaps = () => {
+  useEffect(
+    () =>
+      handleNotificationTaps((key) => {
+        const entry = getEntry(key);
+        if (entry !== undefined) {
+          openAnime(entry.anime);
+        }
+      }),
+    []
+  );
   return null;
 };
 
@@ -126,6 +142,7 @@ const RootLayout = () => {
         <>
           <ReminderSync />
           <TrackerSync />
+          <NotificationTaps />
         </>
       ) : null}
       <Stack

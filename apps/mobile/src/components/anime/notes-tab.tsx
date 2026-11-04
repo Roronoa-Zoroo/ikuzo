@@ -6,8 +6,8 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
-import { deleteNoteWithUndo } from "@/lib/episodes";
-import { entryKeyFor, library, useEntry } from "@/lib/store";
+import { deleteNoteWithUndo, ensureInLibrary } from "@/lib/episodes";
+import { library, useEntry } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -45,10 +45,7 @@ export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
     if (trimmed === "") {
       return;
     }
-    if (entry === undefined) {
-      library.save(anime);
-    }
-    const key = entryKeyFor(anime);
+    const key = ensureInLibrary(anime);
     const number = Number(episode);
     library.addNote(key, trimmed, episode === "" || Number.isNaN(number) ? undefined : number);
     setText("");

@@ -1,32 +1,12 @@
-import type { ListChange, TrackerId, TrackerProfile } from "@ikuzo/anime/trackers";
-import type { ExternalIds } from "@ikuzo/anime/types";
+import { enqueueOp } from "@ikuzo/anime/sync-queue";
+import type { HoldReason, SyncOp } from "@ikuzo/anime/sync-queue";
+import type { TrackerId, TrackerProfile } from "@ikuzo/anime/trackers";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { kv } from "./kv";
 
-/** Why a change waits for the user before it is sent. */
-export type HoldReason = "bulk-remove" | "bulk-add";
-
-/** One change made in Ikuzo that still has to reach one service. */
-export interface SyncOp {
-  /** Library entry key. There is at most one op per key and tracker; newer changes merge into it. */
-  key: string;
-  tracker: TrackerId;
-  kind: "save" | "remove";
-  ids: ExternalIds;
-  /** Fields to send (save only). A show new to the service gets all of them. */
-  change?: ListChange;
-  /** Title for messages ("Could not update Frieren on AniList"). */
-  title: string;
-  at: number;
-  /** Not sent before this time (removals wait, so Undo can cancel them). */
-  notBefore?: number;
-  /** Waits for the user's OK in Settings. */
-  held?: HoldReason;
-  /** The user confirmed this held change; it is not held again. */
-  approved?: boolean;
-}
+export type { HoldReason, SyncOp } from "@ikuzo/anime/sync-queue";
 
 interface AccountsState {
   /** Signed-in accounts. Tokens are kept separately in secure storage. */
@@ -47,35 +27,11 @@ interface AccountsActions {
   setNeedsSignIn: (tracker: TrackerId, needed: boolean) => void;
 }
 
-const sameTarget = (a: Pick<SyncOp, "key" | "tracker">, b: Pick<SyncOp, "key" | "tracker">): boolean =>
-  a.key === b.key && a.tracker === b.tracker;
-
-/**
- * Folds a new change into the pending one for the same show and service:
- * save + save sends the union of the fields, anything + remove is a removal,
- * and remove + save (Undo, or added again) sends the full entry.
- */
-export const mergeOp = (previous: SyncOp | undefined, next: SyncOp): SyncOp => {
-  if (previous === undefined) {
-    return next;
-  }
-  if (next.kind === "remove") {
-    return { ...next, held: previous.held === "bulk-remove" ? previous.held : next.held };
-  }
-  if (previous.kind === "remove") {
-    return next;
-  }
-  return { ...next, change: { ...previous.change, ...next.change }, held: previous.held ?? next.held };
-};
-
 export const useAccounts = create<AccountsState & AccountsActions>()(
   persist(
     (set) => ({
       enqueue: (op) => {
-        set((state) => {
-          const previous = state.queue.find((item) => sameTarget(item, op));
-          return { queue: [...state.queue.filter((item) => !sameTarget(item, op)), mergeOp(previous, op)] };
-        });
+        set((state) => ({ queue: enqueueOp(state.queue, op) }));
       },
       needsSignIn: [],
       profiles: {},

@@ -1,3 +1,4 @@
+import type { AnimeSummary } from "@ikuzo/anime/types";
 import * as Haptics from "expo-haptics";
 import { Alert } from "react-native";
 
@@ -5,7 +6,19 @@ import { showToast } from "@/components/toast";
 
 import { connectedTrackers } from "./accounts";
 import type { LibraryEntry } from "./library-types";
-import { getEntry, library } from "./store";
+import { entryKeyFor, findEntry, getEntry, library } from "./store";
+
+/**
+ * The library key for a show, adding it to Plan to watch first when it is not in the list
+ * (turning on notifications or writing a note needs an entry). Says so, since it also syncs.
+ */
+export const ensureInLibrary = (anime: AnimeSummary): string => {
+  if (findEntry(anime) === undefined) {
+    library.save(anime, { status: "planned" });
+    showToast("Added to Plan to watch");
+  }
+  return entryKeyFor(anime);
+};
 
 /** +1 episode with a haptic tick and an Undo bar, like a proper tracker should. */
 export const watchNextEpisode = (key: string): void => {

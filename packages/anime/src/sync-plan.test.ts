@@ -120,4 +120,19 @@ describe("planSync", () => {
     );
     expect(plan.updates[0]?.ids).toEqual({ anilist: 1, mal: 101 });
   });
+
+  it("does not bring back a show whose deletion has not been sent yet", () => {
+    const plan = planSync([], { anilist: [remote()], mal: [remote({ anime: anime("mal", 101, { mal: 101 }) })] }, NOW, {
+      removed: [{ anilist: 1, mal: 101 }],
+    });
+    expect(plan.inserts).toEqual([]);
+    expect(plan.pushes).toEqual([]);
+  });
+
+  it("still syncs a show that was deleted and added again", () => {
+    const plan = planSync([local()], { anilist: [remote({ progress: 5, updatedAt: LATER })] }, NOW, {
+      removed: [{ anilist: 1, mal: 101 }],
+    });
+    expect(plan.updates[0]?.values?.progress).toBe(5);
+  });
 });

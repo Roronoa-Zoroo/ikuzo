@@ -3,7 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, Share, StyleSheet, Switch, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { AccountsSection } from "@/components/accounts-section";
 import { ChipRow } from "@/components/chips";
@@ -13,8 +13,10 @@ import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { showToast } from "@/components/toast";
 import { Touchable } from "@/components/touchable";
-import { canUndoRestore, createBackup, parseBackup, previewRestore, restoreBackup, undoRestore } from "@/lib/backup";
-import type { ParsedBackup, RestoreMode } from "@/lib/backup";
+import { connectedTrackers } from "@/lib/accounts";
+import { createBackup, parseBackup, previewRestore, restoreBackup, undoableRestoreAt, undoRestore } from "@/lib/backup";
+import type { ParsedBackup, RestoreMode, RestorePreview } from "@/lib/backup";
+import { pickBackupFile, shareBackupFile } from "@/lib/backup-file";
 import { openLink } from "@/lib/links";
 import { anidb } from "@/lib/sources";
 import { library, useSettings } from "@/lib/store";
@@ -71,9 +73,14 @@ const Button = ({
   </Touchable>
 );
 
+const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 const exportBackup = async () => {
-  const backup = JSON.stringify(createBackup());
-  await Share.share({ message: backup, title: "Ikuzo backup" });
+  try {
+    await shareBackupFile(JSON.stringify(createBackup()));
+  } catch (error) {
+    Alert.alert("Export failed", errorText(error));
+  }
 };
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -88,34 +95,43 @@ const runRestore = async (backup: ParsedBackup, mode: RestoreMode) => {
       },
     });
   } catch (error) {
-    Alert.alert(
-      "Restore failed",
-      `${error instanceof Error ? error.message : String(error)}\n\nYour list was not changed.`
-    );
+    Alert.alert("Restore failed", `${errorText(error)}\n\nYour list was not changed.`);
   }
 };
 
+/** What a restore will do, in plain words, before anything changes. */
+const describeRestore = (backup: ParsedBackup, preview: RestorePreview, synced: boolean): string =>
+  [
+    `The backup has ${plural(preview.shows, "show")}${
+      backup.exportedAt === undefined ? "" : ` (saved ${new Date(backup.exportedAt).toLocaleDateString()})`
+    }.`,
+    `"Add & update" adds ${plural(preview.added, "show")} and updates ${preview.changed} with newer copies from the backup.${
+      preview.newerHere > 0 ? ` ${plural(preview.newerHere, "show")} you changed since then stay as they are.` : ""
+    }`,
+    preview.onlyHere > 0 || preview.newerHere > 0
+      ? `"Replace" makes your list exactly like the backup${
+          preview.onlyHere > 0 ? `, removing ${plural(preview.onlyHere, "show")} that are not in it` : ""
+        }.`
+      : undefined,
+    synced
+      ? "Nothing is deleted on AniList or MyAnimeList. The next sync keeps the newest copy of each show: removed shows that are on your accounts come back, and restored shows missing there are added to them (you are asked first when there are many)."
+      : undefined,
+    "You can undo the restore for a day.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
 /**
- * Restores from the clipboard after showing exactly what will change. "Add & update" never
- * removes anything; "Replace" asks again when shows (and their notes) would be removed.
- * Nothing is deleted on AniList or MyAnimeList either way.
+ * Restores after showing exactly what will change. "Add & update" never removes anything or
+ * overwrites newer changes; "Replace" asks again when shows (and their notes) would be removed.
  */
-const importFromClipboard = async () => {
-  const backup = parseBackup(await Clipboard.getStringAsync());
+const confirmRestore = (text: string) => {
+  const backup = parseBackup(text);
   if (backup === undefined) {
-    Alert.alert("No backup found", "Copy the text of an Ikuzo backup to the clipboard first.");
+    Alert.alert("Not an Ikuzo backup", "Pick a backup file exported from Ikuzo, or copy the text of one.");
     return;
   }
   const preview = previewRestore(backup);
-  const lines = [
-    `The backup has ${plural(preview.shows, "show")}${backup.exportedAt === undefined ? "" : ` (${new Date(backup.exportedAt).toLocaleDateString()})`}.`,
-    `${plural(preview.added, "show")} would be added and ${preview.changed} changed.`,
-    preview.onlyHere > 0
-      ? `${plural(preview.onlyHere, "show")} in your list are not in the backup: "Add & update" keeps them, "Replace" removes them.`
-      : undefined,
-    "Your AniList and MyAnimeList lists are not changed by a restore.",
-  ].filter(Boolean);
-
   const confirmReplace = () => {
     if (preview.onlyHere === 0) {
       void runRestore(backup, "replace");
@@ -123,7 +139,9 @@ const importFromClipboard = async () => {
     }
     Alert.alert(
       `Remove ${plural(preview.onlyHere, "show")}?`,
-      `They are not in the backup${preview.notesLost > 0 ? `, and ${plural(preview.notesLost, "note")} would be deleted with them` : ""}. You can undo this right after.`,
+      `They are not in the backup${
+        preview.notesLost > 0 ? `, and ${plural(preview.notesLost, "note")} would be deleted with them` : ""
+      }. You can undo this for a day.`,
       [
         { style: "cancel", text: "Cancel" },
         {
@@ -136,14 +154,9 @@ const importFromClipboard = async () => {
       ]
     );
   };
-
-  Alert.alert("Restore backup?", lines.join("\n\n"), [
+  Alert.alert("Restore backup?", describeRestore(backup, preview, connectedTrackers().length > 0), [
     { style: "cancel", text: "Cancel" },
-    {
-      onPress: confirmReplace,
-      style: "destructive",
-      text: "Replace",
-    },
+    { onPress: confirmReplace, style: "destructive", text: "Replace" },
     {
       onPress: () => {
         void runRestore(backup, "merge");
@@ -153,35 +166,56 @@ const importFromClipboard = async () => {
   ]);
 };
 
+const restoreFromFile = async () => {
+  try {
+    const text = await pickBackupFile();
+    if (text !== undefined) {
+      confirmRestore(text);
+    }
+  } catch (error) {
+    Alert.alert("Could not open the file", errorText(error));
+  }
+};
+
+const restoreFromClipboard = async () => {
+  confirmRestore(await Clipboard.getStringAsync());
+};
+
 const UndoRestoreButton = () => {
-  const [available, setAvailable] = useState(false);
+  const [restoredAt, setRestoredAt] = useState<number | undefined>();
   useEffect(() => {
     const check = async () => {
-      setAvailable(await canUndoRestore());
+      setRestoredAt(await undoableRestoreAt());
     };
     void check();
   }, []);
-  const runUndo = async () => {
-    const done = await undoRestore();
-    setAvailable(false);
-    showToast(done ? "Restore undone" : "Nothing to undo");
-  };
-  if (!available) {
+  if (restoredAt === undefined) {
     return null;
   }
+  const when = new Date(restoredAt).toLocaleString();
+  const runUndo = async () => {
+    const done = await undoRestore();
+    setRestoredAt(undefined);
+    showToast(done ? "Restore undone" : "Nothing to undo");
+  };
   return (
     <Button
       label="Undo last restore"
       onPress={() => {
-        Alert.alert("Undo last restore?", "Your list goes back to exactly how it was before the last restore.", [
-          { style: "cancel", text: "Cancel" },
-          {
-            onPress: () => {
-              void runUndo();
+        Alert.alert(
+          "Undo last restore?",
+          `Your list goes back to exactly how it was before the restore on ${when}. Changes made since then are lost.`,
+          [
+            { style: "cancel", text: "Cancel" },
+            {
+              onPress: () => {
+                void runUndo();
+              },
+              style: "destructive",
+              text: "Undo restore",
             },
-            text: "Undo restore",
-          },
-        ]);
+          ]
+        );
       }}
     />
   );
@@ -252,15 +286,22 @@ const SettingsScreen = () => {
             before switching phones.
           </AppText>
           <Button
-            label="Export backup"
+            label="Export backup file"
             onPress={() => {
               void exportBackup();
             }}
           />
           <Button
+            label="Restore from file"
+            onPress={() => {
+              void restoreFromFile();
+            }}
+            tone="danger"
+          />
+          <Button
             label="Restore from clipboard"
             onPress={() => {
-              void importFromClipboard();
+              void restoreFromClipboard();
             }}
             tone="danger"
           />

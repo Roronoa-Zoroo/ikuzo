@@ -11,22 +11,13 @@ import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { UpdateSheet } from "@/components/update-sheet";
-import { watchNextEpisode } from "@/lib/episodes";
+import { ensureInLibrary, watchNextEpisode } from "@/lib/episodes";
 import { capitalize, formatAirTime, formatCount, formatDateRange } from "@/lib/format";
 import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useCharacters, useRecommendations } from "@/lib/queries";
-import {
-  animeKey,
-  characterKey,
-  entryKeyFor,
-  findEntry,
-  library,
-  useEntry,
-  useFavoriteCharacters,
-  useIsBookmarked,
-} from "@/lib/store";
+import { animeKey, characterKey, library, useEntry, useFavoriteCharacters, useIsBookmarked } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
@@ -200,10 +191,7 @@ const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
       );
       return;
     }
-    if (findEntry(anime) === undefined) {
-      library.save(anime, { status: "planned" });
-    }
-    library.update(entryKeyFor(anime), { notify: !notify });
+    library.update(ensureInLibrary(anime), { notify: !notify });
   };
 
   return (

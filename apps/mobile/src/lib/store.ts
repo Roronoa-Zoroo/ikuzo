@@ -15,6 +15,7 @@ import {
   withIdFields,
 } from "./db";
 import { emitLibraryChange } from "./library-events";
+import type { LibraryChange } from "./library-events";
 import { DEFAULT_SETTINGS } from "./library-types";
 import type {
   FavoriteCharacter,
@@ -25,6 +26,7 @@ import type {
   TitleLanguage,
   WatchStatus,
 } from "./library-types";
+import { reportWriteError } from "./write-errors";
 
 export { WATCH_STATUS_LABELS, WATCH_STATUSES } from "./library-types";
 export type {
@@ -264,11 +266,32 @@ const mergeSnapshot = (current: AnimeSummary, incoming: AnimeSummary): AnimeSumm
     ? { ...current, ...incoming, ids: { ...current.ids, ...incoming.ids } }
     : { ...current, ids: { ...incoming.ids, ...current.ids } };
 
-const writeEntry = (key: string, next: LibraryEntry): void => {
+interface Write {
+  when: (state: "settled") => Promise<unknown>;
+}
+
+/**
+ * Waits for a write to reach the disk. Only then is the change announced to the sync engine, so
+ * a write that fails (and is rolled back by TanStack DB) is never sent to AniList or MyAnimeList.
+ */
+const afterWrite = (write: Write, change?: LibraryChange): void => {
+  const settle = async () => {
+    try {
+      await write.when("settled");
+      if (change !== undefined) {
+        emitLibraryChange(change);
+      }
+    } catch (error) {
+      reportWriteError(error);
+    }
+  };
+  void settle();
+};
+
+const writeEntry = (key: string, next: LibraryEntry): Write =>
   entriesCollection.update(key, (draft) => {
     Object.assign(draft, withIdFields(next));
   });
-};
 
 /** Adds a show to the library, or changes its list values. */
 const save = (anime: AnimeSummary, patch: ListPatch = {}): LibraryEntry => {
@@ -285,18 +308,17 @@ const save = (anime: AnimeSummary, patch: ListPatch = {}): LibraryEntry => {
       notify: false,
       updatedAt: now,
     });
-    entriesCollection.insert(entry);
-    emitLibraryChange({ change: values, entry, isNew: true, kind: "save" });
+    afterWrite(entriesCollection.insert(entry), { change: values, entry, isNew: true, kind: "save" });
     return entry;
   }
   const merged = mergeSnapshot(existing.anime, anime);
   const values = nextListValues(merged, existing, patch);
   const change = diffList(existing, values);
   const next = { ...existing, ...values, anime: merged, updatedAt: isEmptyChange(change) ? existing.updatedAt : now };
-  writeEntry(existing.key, next);
-  if (!isEmptyChange(change)) {
-    emitLibraryChange({ change, entry: next, isNew: false, kind: "save" });
-  }
+  afterWrite(
+    writeEntry(existing.key, next),
+    isEmptyChange(change) ? undefined : { change, entry: next, isNew: false, kind: "save" }
+  );
   return next;
 };
 
@@ -313,10 +335,10 @@ const update = (key: string, patch: ListPatch & { notify?: boolean }): void => {
     notify: patch.notify ?? entry.notify,
     updatedAt: isEmptyChange(change) ? entry.updatedAt : Date.now(),
   };
-  writeEntry(key, next);
-  if (!isEmptyChange(change)) {
-    emitLibraryChange({ change, entry: next, isNew: false, kind: "save" });
-  }
+  afterWrite(
+    writeEntry(key, next),
+    isEmptyChange(change) ? undefined : { change, entry: next, isNew: false, kind: "save" }
+  );
 };
 
 const increment = (key: string): void => {
@@ -332,8 +354,7 @@ const remove = (key: string): LibraryEntry | undefined => {
   if (entry === undefined) {
     return undefined;
   }
-  entriesCollection.delete(key);
-  emitLibraryChange({ entry, kind: "remove" });
+  afterWrite(entriesCollection.delete(key), { entry, kind: "remove" });
   return entry;
 };
 
@@ -343,9 +364,8 @@ const restoreEntry = (entry: LibraryEntry): void => {
     return;
   }
   const clean = withIdFields(stripVirtual(entry));
-  entriesCollection.insert(clean);
   const change: ListChange = { progress: clean.progress, score: clean.score, status: clean.status };
-  emitLibraryChange({ change, entry: clean, isNew: true, kind: "save" });
+  afterWrite(entriesCollection.insert(clean), { change, entry: clean, isNew: true, kind: "save" });
 };
 
 /** Newer show data (episode counts, air dates) for entries; list values are untouched and nothing syncs. */
@@ -353,7 +373,7 @@ const refreshSnapshots = (shows: AnimeSummary[]): void => {
   for (const anime of shows) {
     const entry = findEntry(anime);
     if (entry !== undefined) {
-      writeEntry(entry.key, { ...entry, anime: mergeSnapshot(entry.anime, anime) });
+      afterWrite(writeEntry(entry.key, { ...entry, anime: mergeSnapshot(entry.anime, anime) }));
     }
   }
 };
@@ -403,9 +423,11 @@ const applySyncPlan = async (inserts: PlannedInsert[], updates: PlannedUpdate[])
 /** Records that a service now has (at > 0) or no longer has (0) the show. */
 const markTracker = (key: string, tracker: TrackerId, at: number): void => {
   if (getEntry(key) !== undefined) {
-    entriesCollection.update(key, (draft) => {
-      draft.trackers = { ...draft.trackers, [tracker]: at };
-    });
+    afterWrite(
+      entriesCollection.update(key, (draft) => {
+        draft.trackers = { ...draft.trackers, [tracker]: at };
+      })
+    );
   }
 };
 
@@ -426,36 +448,42 @@ const clearTrackerMarks = async (tracker: TrackerId): Promise<void> => {
 
 const addNote = (key: string, text: string, episode?: number): void => {
   const note: Note = { createdAt: Date.now(), episode, id: newId(), text };
-  entriesCollection.update(key, (draft) => {
-    draft.notes = [note, ...draft.notes];
-  });
+  afterWrite(
+    entriesCollection.update(key, (draft) => {
+      draft.notes = [note, ...draft.notes];
+    })
+  );
 };
 
 const deleteNote = (key: string, noteId: string): Note | undefined => {
   const note = getEntry(key)?.notes.find((item) => item.id === noteId);
   if (note !== undefined) {
-    entriesCollection.update(key, (draft) => {
-      draft.notes = draft.notes.filter((item) => item.id !== noteId);
-    });
+    afterWrite(
+      entriesCollection.update(key, (draft) => {
+        draft.notes = draft.notes.filter((item) => item.id !== noteId);
+      })
+    );
   }
   return note;
 };
 
 const restoreNote = (key: string, note: Note): void => {
   if (getEntry(key) !== undefined) {
-    entriesCollection.update(key, (draft) => {
-      draft.notes = [note, ...draft.notes].toSorted((a, b) => b.createdAt - a.createdAt);
-    });
+    afterWrite(
+      entriesCollection.update(key, (draft) => {
+        draft.notes = [note, ...draft.notes].toSorted((a, b) => b.createdAt - a.createdAt);
+      })
+    );
   }
 };
 
 const toggleSaved = (collection: typeof bookmarksCollection, anime: AnimeSummary): boolean => {
   const key = animeKey(anime);
   if (collection.has(key)) {
-    collection.delete(key);
+    afterWrite(collection.delete(key));
     return false;
   }
-  collection.insert({ addedAt: Date.now(), anime, key });
+  afterWrite(collection.insert({ addedAt: Date.now(), anime, key }));
   return true;
 };
 
@@ -466,10 +494,10 @@ const toggleFavoriteShow = (anime: AnimeSummary): boolean => toggleSaved(favorit
 const toggleFavoriteCharacter = (source: Source, character: Pick<CharacterRole, "id" | "name" | "image">): void => {
   const key = characterKey(source, character.id);
   if (favoriteCharactersCollection.has(key)) {
-    favoriteCharactersCollection.delete(key);
+    afterWrite(favoriteCharactersCollection.delete(key));
     return;
   }
-  favoriteCharactersCollection.insert({
+  const insert = favoriteCharactersCollection.insert({
     addedAt: Date.now(),
     id: character.id,
     image: character.image,
@@ -477,16 +505,17 @@ const toggleFavoriteCharacter = (source: Source, character: Pick<CharacterRole, 
     name: character.name,
     source,
   });
+  afterWrite(insert);
 };
 
 const setSettings = (patch: Partial<Settings>): void => {
-  if (settingsCollection.has(SETTINGS_ID)) {
-    settingsCollection.update(SETTINGS_ID, (draft) => {
-      Object.assign(draft, patch);
-    });
-  } else {
-    settingsCollection.insert({ ...DEFAULT_SETTINGS, ...patch, id: SETTINGS_ID });
-  }
+  afterWrite(
+    settingsCollection.has(SETTINGS_ID)
+      ? settingsCollection.update(SETTINGS_ID, (draft) => {
+          Object.assign(draft, patch);
+        })
+      : settingsCollection.insert({ ...DEFAULT_SETTINGS, ...patch, id: SETTINGS_ID })
+  );
 };
 
 /** Every write to the library goes through these. */
