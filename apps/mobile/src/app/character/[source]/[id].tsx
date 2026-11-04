@@ -13,7 +13,7 @@ import { openLink } from "@/lib/links";
 import { openAnime } from "@/lib/nav";
 import { useCharacter } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
-import { characterKey, useLibrary } from "@/lib/store";
+import { library, useIsFavoriteCharacter } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const ABOUT_PREVIEW_LINES = 8;
@@ -40,8 +40,8 @@ const CharacterScreen = () => {
   const source = isSource(params.source) ? params.source : "anilist";
   const id = Number(params.id);
   const character = useCharacter(source, id);
-  const favorite = useLibrary((state) => state.favoriteCharacters[characterKey(source, id)] !== undefined);
-  const toggle = useLibrary((state) => state.toggleFavoriteCharacter);
+  const favorite = useIsFavoriteCharacter(source, id);
+  const toggle = library.toggleFavoriteCharacter;
   const [expanded, setExpanded] = useState(false);
 
   const back = {

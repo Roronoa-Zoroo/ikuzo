@@ -9,7 +9,7 @@ import { Header, IconButton } from "@/components/header";
 import { AppText } from "@/components/text";
 import { capitalize, currentSeason } from "@/lib/format";
 import { useSeasonal } from "@/lib/queries";
-import { useLibrary } from "@/lib/store";
+import { useSettings } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -35,7 +35,7 @@ const shift = (year: number, season: Season, by: 1 | -1): { year: number; season
 };
 
 const SeasonalScreen = () => {
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const [selectedSeason, setSelectedSeason] = useState(currentSeason);
   const { season, year } = selectedSeason;
   const query = useSeasonal(source, year, season);

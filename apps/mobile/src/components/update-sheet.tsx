@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES, useEntry, entryKeyFor } from "@/lib/store";
+import { confirmRemove } from "@/lib/episodes";
+import { displayTitle, library, useEntry, useSettings, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
@@ -71,8 +72,7 @@ const Chip = ({ label, active, onPress }: { label: string; active: boolean; onPr
 
 const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
   const entry = useEntry(anime);
-  const save = useLibrary((state) => state.save);
-  const remove = useLibrary((state) => state.remove);
+  const language = useSettings().titleLanguage;
   const [status, setStatus] = useState<WatchStatus>(entry?.status ?? "planned");
   const [progress, setProgress] = useState(entry?.progress ?? 0);
   const [score, setScore] = useState(entry?.score ?? 0);
@@ -154,8 +154,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
           <Touchable
             accessibilityRole="button"
             onPress={() => {
-              remove(entryKeyFor(anime));
-              onClose();
+              confirmRemove(entry, displayTitle(anime, language), onClose);
             }}
             style={[styles.button, styles.danger]}
           >
@@ -167,7 +166,7 @@ const Form = ({ anime, onClose }: Omit<UpdateSheetProps, "visible">) => {
         <Touchable
           accessibilityRole="button"
           onPress={() => {
-            save(anime, { progress, score, status });
+            library.save(anime, { progress, score, status });
             onClose();
           }}
           style={[styles.button, styles.primary]}

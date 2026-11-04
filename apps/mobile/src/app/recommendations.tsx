@@ -10,7 +10,7 @@ import { EmptyState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
-import { animeKey, useLibrary, findEntry } from "@/lib/store";
+import { animeKey, useEntries, useEntryLookup } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 /** How many favourite shows seed the recommendations. */
@@ -27,10 +27,11 @@ const styles = StyleSheet.create({
  * finished) shows, ranked by how many of them recommend the same title.
  */
 const RecommendationsScreen = () => {
-  const entries = useLibrary((state) => state.entries);
+  const entries = useEntries();
+  const lookup = useEntryLookup();
   const seeds = useMemo(
     () =>
-      Object.values(entries)
+      entries
         .filter((entry) => entry.status === "completed" || entry.status === "watching")
         .toSorted((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
         .slice(0, SEEDS),
@@ -51,7 +52,7 @@ const RecommendationsScreen = () => {
       const seed = seeds[index];
       for (const anime of result.data ?? []) {
         const key = animeKey(anime);
-        if (findEntry(entries, anime) !== undefined || seed === undefined) {
+        if (lookup(anime) !== undefined || seed === undefined) {
           continue;
         }
         const current = counts.get(key) ?? { anime, because: [], votes: 0 };
@@ -61,7 +62,7 @@ const RecommendationsScreen = () => {
       }
     }
     return [...counts.values()].toSorted((a, b) => b.votes - a.votes);
-  }, [entries, results, seeds]);
+  }, [lookup, results, seeds]);
 
   return (
     <View style={styles.screen}>

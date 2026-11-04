@@ -1,11 +1,22 @@
 import { TRACKER_LABELS, TRACKERS } from "@ikuzo/anime/trackers";
-import type { TrackerId } from "@ikuzo/anime/trackers";
+import type { RemoteEntry, TrackerId } from "@ikuzo/anime/trackers";
 import { Image } from "expo-image";
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from "react-native";
 
-import { useAccounts } from "@/lib/accounts";
-import { connect, disconnect, importPublicList, pull } from "@/lib/sync";
+import { groupHeld, useAccounts } from "@/lib/accounts";
+import type { HoldReason } from "@/lib/accounts";
+import {
+  approveHeld,
+  connect,
+  disconnect,
+  discardHeld,
+  importPublicList,
+  pendingFor,
+  previewPublicList,
+  pull,
+} from "@/lib/sync";
+import type { PullSummary } from "@/lib/sync";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
@@ -79,6 +90,86 @@ const Button = ({ label, onPress, primary = false, busy = false }: ButtonProps) 
   </Touchable>
 );
 
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/** What a sync did, in one sentence per kind of change. */
+const describeSummary = (summary: PullSummary, label: string): string =>
+  [
+    `${plural(summary.added, "show")} added and ${summary.updated} updated from ${label}.`,
+    summary.sent > 0 ? `${plural(summary.sent, "newer change")} sent back.` : undefined,
+    summary.removedRemotely > 0
+      ? `${plural(summary.removedRemotely, "show")} removed on a service stay in Ikuzo.`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+const HOLD_TEXT: Record<HoldReason, (count: number, label: string) => string> = {
+  "bulk-add": (count, label) => `${plural(count, "show")} from Ikuzo are not on your ${label} list yet.`,
+  "bulk-remove": (count, label) => `${plural(count, "show")} will be removed from your ${label} list.`,
+};
+
+const HOLD_ACTIONS: Record<HoldReason, { approve: string; discard: string }> = {
+  "bulk-add": { approve: "Add them", discard: "Don't add" },
+  "bulk-remove": { approve: "Remove there too", discard: "Keep them there" },
+};
+
+/** Big batches of changes wait here for an explicit OK before they reach a service. */
+const HeldChanges = () => {
+  const queue = useAccounts((state) => state.queue);
+  const groups = groupHeld(queue);
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <View style={styles.divider} />
+      <AppText variant="label">Waiting for your OK</AppText>
+      {groups.map((group) => {
+        const label = TRACKER_LABELS[group.tracker];
+        const actions = HOLD_ACTIONS[group.reason];
+        const titles = group.ops
+          .slice(0, 3)
+          .map((op) => op.title)
+          .join(", ");
+        return (
+          <View key={`${group.tracker}:${group.reason}`} style={styles.stack}>
+            <AppText variant="caption">
+              {HOLD_TEXT[group.reason](group.ops.length, label)} {titles}
+              {group.ops.length > 3 ? "…" : ""}
+            </AppText>
+            <View style={styles.row}>
+              <Button
+                label={actions.approve}
+                onPress={() => {
+                  Alert.alert(actions.approve, HOLD_TEXT[group.reason](group.ops.length, label), [
+                    { style: "cancel", text: "Cancel" },
+                    {
+                      onPress: () => {
+                        approveHeld(group.tracker, group.reason);
+                      },
+                      style: group.reason === "bulk-remove" ? "destructive" : "default",
+                      text: actions.approve,
+                    },
+                  ]);
+                }}
+                primary={group.reason === "bulk-add"}
+              />
+              <Button
+                label={actions.discard}
+                onPress={() => {
+                  discardHeld(group.tracker, group.reason);
+                }}
+                primary={group.reason === "bulk-remove"}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </>
+  );
+};
+
 const AccountRow = ({ tracker }: { tracker: TrackerId }) => {
   const profile = useAccounts((state) => state.profiles[tracker]);
   const needsSignIn = useAccounts((state) => state.needsSignIn.includes(tracker));
@@ -90,10 +181,24 @@ const AccountRow = ({ tracker }: { tracker: TrackerId }) => {
     try {
       const result = await connect(tracker);
       if (result !== false) {
-        Alert.alert(
-          `${label} connected`,
-          `${result.added} shows added and ${result.updated} updated from ${label}. ${result.sent} newer changes were sent to ${label}.`
-        );
+        const toAdd = result.toAdd[tracker] ?? 0;
+        if (toAdd > 0) {
+          Alert.alert(
+            `${label} connected`,
+            `${describeSummary(result, label)}\n\n${HOLD_TEXT["bulk-add"](toAdd, label)} Add them to ${label}?`,
+            [
+              { style: "cancel", text: "Not now" },
+              {
+                onPress: () => {
+                  approveHeld(tracker, "bulk-add");
+                },
+                text: "Add them",
+              },
+            ]
+          );
+        } else {
+          Alert.alert(`${label} connected`, describeSummary(result, label));
+        }
       }
     } catch (error) {
       Alert.alert(`Could not connect ${label}`, errorText(error));
@@ -102,7 +207,14 @@ const AccountRow = ({ tracker }: { tracker: TrackerId }) => {
   };
 
   const onDisconnect = () => {
-    Alert.alert(`Disconnect ${label}?`, "Your Ikuzo list stays on this phone; it just stops syncing.", [
+    const pending = pendingFor(tracker);
+    const message = [
+      "Your Ikuzo list stays on this phone; it just stops syncing.",
+      pending > 0 ? `${plural(pending, "change")} not sent to ${label} yet will be discarded.` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    Alert.alert(`Disconnect ${label}?`, message, [
       { style: "cancel", text: "Cancel" },
       {
         onPress: () => {
@@ -120,7 +232,7 @@ const AccountRow = ({ tracker }: { tracker: TrackerId }) => {
       <View style={styles.accountText}>
         <AppText variant="label">{label}</AppText>
         <AppText variant="caption">{profile === undefined ? "Not connected" : `Signed in as ${profile.name}`}</AppText>
-        {needsSignIn ? (
+        {needsSignIn && profile !== undefined ? (
           <AppText style={styles.error} variant="caption">
             Sign-in expired, changes are waiting
           </AppText>
@@ -200,11 +312,36 @@ const SyncStatus = () => {
   );
 };
 
+const runImport = async (shows: RemoteEntry[]) => {
+  const added = await importPublicList(shows);
+  Alert.alert("List imported", `${plural(added, "show")} added.`);
+};
+
 /** Read-only import of anyone's public list, for people who would rather not sign in. */
 const PublicImport = () => {
   const [tracker, setTracker] = useState<TrackerId>("mal");
   const [userName, setUserName] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const confirmImport = (shows: RemoteEntry[]) => {
+    if (shows.length === 0) {
+      Alert.alert("Nothing to import", "Every show on that list is already in Ikuzo.");
+      return;
+    }
+    Alert.alert(
+      "Import list?",
+      `${plural(shows.length, "show")} from ${userName.trim()}’s list will be added to Ikuzo. Shows already in your list are left as they are, and nothing is sent to your accounts.`,
+      [
+        { style: "cancel", text: "Cancel" },
+        {
+          onPress: () => {
+            void runImport(shows);
+          },
+          text: "Import",
+        },
+      ]
+    );
+  };
 
   const onImport = async () => {
     if (userName.trim() === "") {
@@ -212,8 +349,7 @@ const PublicImport = () => {
     }
     setBusy(true);
     try {
-      const result = await importPublicList(tracker, userName);
-      Alert.alert("List imported", `${result.added} shows added and ${result.updated} updated.`);
+      confirmImport(await previewPublicList(tracker, userName));
     } catch (error) {
       Alert.alert("Import failed", errorText(error));
     }
@@ -224,7 +360,9 @@ const PublicImport = () => {
     <>
       <View style={styles.divider} />
       <AppText variant="label">Import a public list</AppText>
-      <AppText variant="caption">Copies a list into Ikuzo without signing in. Changes are not sent back.</AppText>
+      <AppText variant="caption">
+        Adds the shows of anyone’s public list to Ikuzo without signing in. Nothing is sent back.
+      </AppText>
       <ChipRow
         onToggle={setTracker}
         options={TRACKERS.map((value) => ({ label: TRACKER_LABELS[value], value }))}
@@ -263,6 +401,7 @@ export const AccountsSection = () => (
         <AccountRow key={tracker} tracker={tracker} />
       ))}
       <SyncStatus />
+      <HeldChanges />
       <PublicImport />
     </View>
   </Section>

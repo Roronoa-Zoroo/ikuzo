@@ -5,7 +5,7 @@ import { create } from "zustand";
 
 import { openLink } from "@/lib/links";
 import { openAnime } from "@/lib/nav";
-import { useLibrary } from "@/lib/store";
+import { getEntries, library, useSettings } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 import { OptionsSheet } from "./options-sheet";
@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
 });
 
 const pickRandomPlanned = () => {
-  const planned = Object.values(useLibrary.getState().entries).filter((entry) => entry.status === "planned");
+  const planned = getEntries().filter((entry) => entry.status === "planned");
   const pick = planned[Math.floor(Math.random() * planned.length)];
   if (pick === undefined) {
     Alert.alert("Nothing planned yet", "Add shows to Plan to watch and Ikuzo will pick one for you.");
@@ -39,8 +39,8 @@ const pickRandomPlanned = () => {
 };
 
 const SourceSwitch = () => {
-  const source = useLibrary((state) => state.settings.source);
-  const setSettings = useLibrary((state) => state.setSettings);
+  const { source } = useSettings();
+  const { setSettings } = library;
   return (
     <View style={styles.header}>
       <AppText variant="title">Ikuzo</AppText>

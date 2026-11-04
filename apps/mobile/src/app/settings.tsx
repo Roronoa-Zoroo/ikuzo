@@ -2,6 +2,7 @@ import { SOURCE_LABELS, SOURCES } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import { router } from "expo-router";
+import { useEffect, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Switch, View } from "react-native";
 
 import { AccountsSection } from "@/components/accounts-section";
@@ -10,10 +11,13 @@ import type { ChipOption } from "@/components/chips";
 import { Header } from "@/components/header";
 import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
+import { showToast } from "@/components/toast";
 import { Touchable } from "@/components/touchable";
+import { canUndoRestore, createBackup, parseBackup, previewRestore, restoreBackup, undoRestore } from "@/lib/backup";
+import type { ParsedBackup, RestoreMode } from "@/lib/backup";
 import { openLink } from "@/lib/links";
 import { anidb } from "@/lib/sources";
-import { createBackup, isBackup, useLibrary } from "@/lib/store";
+import { library, useSettings } from "@/lib/store";
 import type { TitleLanguage } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
@@ -68,38 +72,124 @@ const Button = ({
 );
 
 const exportBackup = async () => {
-  const backup = JSON.stringify(createBackup(useLibrary.getState()));
+  const backup = JSON.stringify(createBackup());
   await Share.share({ message: backup, title: "Ikuzo backup" });
 };
 
-const importFromClipboard = async () => {
-  const text = await Clipboard.getStringAsync();
-  let parsed: unknown;
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+const runRestore = async (backup: ParsedBackup, mode: RestoreMode) => {
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = undefined;
+    await restoreBackup(backup, mode);
+    showToast("Backup restored", {
+      label: "Undo",
+      onPress: () => {
+        void undoRestore();
+      },
+    });
+  } catch (error) {
+    Alert.alert(
+      "Restore failed",
+      `${error instanceof Error ? error.message : String(error)}\n\nYour list was not changed.`
+    );
   }
-  if (!isBackup(parsed)) {
+};
+
+/**
+ * Restores from the clipboard after showing exactly what will change. "Add & update" never
+ * removes anything; "Replace" asks again when shows (and their notes) would be removed.
+ * Nothing is deleted on AniList or MyAnimeList either way.
+ */
+const importFromClipboard = async () => {
+  const backup = parseBackup(await Clipboard.getStringAsync());
+  if (backup === undefined) {
     Alert.alert("No backup found", "Copy the text of an Ikuzo backup to the clipboard first.");
     return;
   }
-  const count = Object.keys(parsed.entries).length;
-  Alert.alert("Restore backup?", `This replaces your current list with ${count} shows from the backup.`, [
+  const preview = previewRestore(backup);
+  const lines = [
+    `The backup has ${plural(preview.shows, "show")}${backup.exportedAt === undefined ? "" : ` (${new Date(backup.exportedAt).toLocaleDateString()})`}.`,
+    `${plural(preview.added, "show")} would be added and ${preview.changed} changed.`,
+    preview.onlyHere > 0
+      ? `${plural(preview.onlyHere, "show")} in your list are not in the backup: "Add & update" keeps them, "Replace" removes them.`
+      : undefined,
+    "Your AniList and MyAnimeList lists are not changed by a restore.",
+  ].filter(Boolean);
+
+  const confirmReplace = () => {
+    if (preview.onlyHere === 0) {
+      void runRestore(backup, "replace");
+      return;
+    }
+    Alert.alert(
+      `Remove ${plural(preview.onlyHere, "show")}?`,
+      `They are not in the backup${preview.notesLost > 0 ? `, and ${plural(preview.notesLost, "note")} would be deleted with them` : ""}. You can undo this right after.`,
+      [
+        { style: "cancel", text: "Cancel" },
+        {
+          onPress: () => {
+            void runRestore(backup, "replace");
+          },
+          style: "destructive",
+          text: "Replace",
+        },
+      ]
+    );
+  };
+
+  Alert.alert("Restore backup?", lines.join("\n\n"), [
     { style: "cancel", text: "Cancel" },
     {
-      onPress: () => {
-        useLibrary.getState().importBackup(parsed);
-      },
+      onPress: confirmReplace,
       style: "destructive",
-      text: "Restore",
+      text: "Replace",
+    },
+    {
+      onPress: () => {
+        void runRestore(backup, "merge");
+      },
+      text: "Add & update",
     },
   ]);
 };
 
+const UndoRestoreButton = () => {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    const check = async () => {
+      setAvailable(await canUndoRestore());
+    };
+    void check();
+  }, []);
+  const runUndo = async () => {
+    const done = await undoRestore();
+    setAvailable(false);
+    showToast(done ? "Restore undone" : "Nothing to undo");
+  };
+  if (!available) {
+    return null;
+  }
+  return (
+    <Button
+      label="Undo last restore"
+      onPress={() => {
+        Alert.alert("Undo last restore?", "Your list goes back to exactly how it was before the last restore.", [
+          { style: "cancel", text: "Cancel" },
+          {
+            onPress: () => {
+              void runUndo();
+            },
+            text: "Undo restore",
+          },
+        ]);
+      }}
+    />
+  );
+};
+
 const SettingsScreen = () => {
-  const settings = useLibrary((state) => state.settings);
-  const setSettings = useLibrary((state) => state.setSettings);
+  const settings = useSettings();
+  const { setSettings } = library;
 
   return (
     <View style={styles.screen}>
@@ -158,7 +248,8 @@ const SettingsScreen = () => {
 
         <Section title="Backup">
           <AppText variant="caption">
-            Your list lives only on this device. Export it now and then, or before switching phones.
+            Your list lives on this device (and on AniList or MyAnimeList when connected). Export it now and then, or
+            before switching phones.
           </AppText>
           <Button
             label="Export backup"
@@ -173,13 +264,14 @@ const SettingsScreen = () => {
             }}
             tone="danger"
           />
+          <UndoRestoreButton />
         </Section>
 
         <Section title="About">
           <AppText variant="caption">
-            Ikuzo {Constants.expoConfig?.version ?? ""} is free, open source and has no ads, accounts or tracking. Anime
-            data comes from AniList, MyAnimeList (through the Jikan API) and AniDB. Ikuzo is not affiliated with any of
-            them.
+            Ikuzo {Constants.expoConfig?.version ?? ""} is free, open source and has no ads or tracking. Anime data
+            comes from AniList, MyAnimeList (its official API, with Jikan for characters, reviews and songs) and AniDB.
+            Ikuzo is not affiliated with any of them.
           </AppText>
           <Button
             label="Source code on GitHub"

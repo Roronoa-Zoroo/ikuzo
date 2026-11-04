@@ -7,7 +7,7 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { formatDateRange } from "@/lib/format";
 import { duration } from "@/lib/motion";
-import { displayTitle, useLibrary } from "@/lib/store";
+import { displayTitle, useSettings } from "@/lib/store";
 import { colors, fontSize, radius, spacing } from "@/lib/theme";
 
 import { ProgressBar } from "./progress-bar";
@@ -80,7 +80,7 @@ export const AnimeRow = ({
   showStatus = true,
   titleLines = 1,
 }: AnimeRowProps) => {
-  const language = useLibrary((state) => state.settings.titleLanguage);
+  const language = useSettings().titleLanguage;
   const total = anime.episodes;
   const ratio = progress !== undefined && total !== null && total > 0 ? Math.min(1, progress / total) : 0;
   const dates = formatDateRange(anime.airedFrom, anime.airedTo, anime.status);

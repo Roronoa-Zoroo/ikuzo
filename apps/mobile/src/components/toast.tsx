@@ -53,6 +53,8 @@ export const showToast = (text: string, action?: ToastMessage["action"]): void =
 };
 
 const VISIBLE_MS = 3500;
+/** Toasts with an action (Undo) stay longer, so there is time to reach the button. */
+const ACTION_VISIBLE_MS = 6000;
 /** Space for the bottom tab bar, so the bar never covers it. */
 const TAB_BAR_CLEARANCE = 64;
 
@@ -91,9 +93,12 @@ export const ToastHost = () => {
     }
     progress.set(0);
     progress.set(withTiming(1, { duration: duration.slideIn, easing: easing.overshoot }));
-    const timer = setTimeout(() => {
-      progress.set(withTiming(0, { duration: duration.slideOut, easing: easing.anticipate }, hideWhenFinished));
-    }, VISIBLE_MS);
+    const timer = setTimeout(
+      () => {
+        progress.set(withTiming(0, { duration: duration.slideOut, easing: easing.anticipate }, hideWhenFinished));
+      },
+      message.action === undefined ? VISIBLE_MS : ACTION_VISIBLE_MS
+    );
     return () => {
       clearTimeout(timer);
     };

@@ -14,7 +14,7 @@ import { capitalize, currentSeason } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { useBrowse, useSeasonal } from "@/lib/queries";
 import { getProvider } from "@/lib/sources";
-import { useLibrary } from "@/lib/store";
+import { useSettings } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const LISTS: { list: BrowseList; title: string }[] = [
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
 });
 
 const BrowseRow = ({ list, title }: { list: BrowseList; title: string }) => {
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const query = useBrowse(source, list);
   return (
     <AnimeCarousel
@@ -58,7 +58,7 @@ const BrowseRow = ({ list, title }: { list: BrowseList; title: string }) => {
 };
 
 const SeasonRow = () => {
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const { season, year } = currentSeason();
   const query = useSeasonal(source, year, season);
   return (
@@ -75,7 +75,7 @@ const SeasonRow = () => {
 };
 
 const DiscoverScreen = () => {
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const openMenu = useSideMenu((state) => state.setOpen);
   const random = useMutation({
     mutationFn: async () => await getProvider(source).random(),

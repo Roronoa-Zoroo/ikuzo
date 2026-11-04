@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
@@ -6,7 +5,7 @@ import { Header } from "@/components/header";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { openAnime } from "@/lib/nav";
-import { animeKey, useLibrary, findEntry } from "@/lib/store";
+import { animeKey, useBookmarks, useEntryLookup } from "@/lib/store";
 import { colors } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -15,10 +14,9 @@ const styles = StyleSheet.create({
 });
 
 const BookmarksScreen = () => {
-  const bookmarks = useLibrary((state) => state.bookmarks);
-  const entries = useLibrary((state) => state.entries);
+  const bookmarks = useBookmarks();
+  const lookup = useEntryLookup();
   const openMenu = useSideMenu((state) => state.setOpen);
-  const items = useMemo(() => Object.values(bookmarks).toSorted((a, b) => b.addedAt - a.addedAt), [bookmarks]);
 
   return (
     <View style={styles.screen}>
@@ -34,7 +32,7 @@ const BookmarksScreen = () => {
       />
       <FlatList
         contentContainerStyle={styles.list}
-        data={items}
+        data={bookmarks}
         keyExtractor={(item) => animeKey(item.anime)}
         ListEmptyComponent={
           <EmptyState
@@ -44,7 +42,7 @@ const BookmarksScreen = () => {
           />
         }
         renderItem={({ item }) => {
-          const entry = findEntry(entries, item.anime);
+          const entry = lookup(item.anime);
           return (
             <AnimeRow
               anime={entry?.anime ?? item.anime}

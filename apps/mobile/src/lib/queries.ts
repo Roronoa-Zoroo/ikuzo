@@ -1,15 +1,36 @@
 import { estimateNextEpisode } from "@ikuzo/anime/airing";
+import { HttpError } from "@ikuzo/anime/errors";
 import { completeIds } from "@ikuzo/anime/ids";
-import type { AnimeSummary, BrowseList, Paged, SearchParams, Season, Source } from "@ikuzo/anime/types";
+import type { AnimeSummary, BrowseList, NextEpisode, Paged, SearchParams, Season, Source } from "@ikuzo/anime/types";
 import { QueryClient, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import { anidb, anilist, getProvider } from "./sources";
-import { useLibrary } from "./store";
+import { useEntries } from "./store";
 import type { LibraryEntry } from "./store";
+import { useNow } from "./use-now";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const STALE_DEFAULT_MS = 30 * MINUTE_MS;
+const HTTP_CLIENT_ERROR = 400;
+const HTTP_SERVER_ERROR = 500;
+const HTTP_TOO_MANY_REQUESTS = 429;
+/** The HTTP layer already retries 429 / 5xx; one more try here covers flaky networks. */
+const MAX_QUERY_RETRIES = 1;
+
+/** Requests the server refused (404, 400…) cannot succeed by asking again. */
+const shouldRetry = (failureCount: number, error: unknown): boolean => {
+  if (
+    error instanceof HttpError &&
+    error.status >= HTTP_CLIENT_ERROR &&
+    error.status < HTTP_SERVER_ERROR &&
+    error.status !== HTTP_TOO_MANY_REQUESTS
+  ) {
+    return false;
+  }
+  return failureCount < MAX_QUERY_RETRIES;
+};
 
 const nextPage = (last: Paged<unknown>): number | undefined => (last.hasNextPage ? last.page + 1 : undefined);
 
@@ -17,7 +38,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 6 * HOUR_MS,
-      retry: 2,
+      retry: shouldRetry,
       staleTime: STALE_DEFAULT_MS,
     },
   },
@@ -123,43 +144,73 @@ export interface Airing {
   airingAt: number;
 }
 
+const isAiringCandidate = (entry: LibraryEntry): boolean =>
+  (entry.anime.status === "airing" || entry.anime.status === "upcoming") &&
+  (entry.status === "watching" || entry.status === "planned" || entry.status === "onHold");
+
+const sortedIds = (ids: (number | undefined)[]): number[] =>
+  [...new Set(ids.filter((id): id is number => id !== undefined))].toSorted((a, b) => a - b);
+
 /**
- * Next episode for every airing/upcoming show in the library. AniList knows exact
- * times, so MyAnimeList entries are looked up there by MAL id; anything AniList
+ * Next episode for every airing/upcoming show in the library. AniList knows exact times, so
+ * shows are looked up there (by MAL id, or AniList id for shows without one); anything AniList
  * does not know falls back to the weekly broadcast slot.
+ *
+ * Only the air times are fetched; they are combined with the live library here, so changes
+ * such as turning notifications on show up (and reschedule reminders) immediately.
  */
 export const useLibraryAiring = () => {
-  const entries = useLibrary((state) => state.entries);
-  const candidates = Object.values(entries).filter(
-    (entry) =>
-      (entry.anime.status === "airing" || entry.anime.status === "upcoming") &&
-      (entry.status === "watching" || entry.status === "planned" || entry.status === "onHold")
+  const entries = useEntries();
+  const candidates = useMemo(() => entries.filter(isAiringCandidate), [entries]);
+  const malIds = useMemo(() => sortedIds(candidates.map((entry) => entry.anime.ids.mal)), [candidates]);
+  const aniListIds = useMemo(
+    () =>
+      sortedIds(
+        candidates.filter((entry) => entry.anime.ids.mal === undefined).map((entry) => entry.anime.ids.anilist)
+      ),
+    [candidates]
   );
-  const malIds = candidates
-    .map((entry) => entry.anime.ids.mal)
-    .filter((id): id is number => id !== undefined)
-    .toSorted((a, b) => a - b);
 
-  return useQuery({
-    queryFn: async (): Promise<Airing[]> => {
-      const exact = new Map<number, AnimeSummary>();
+  const times = useQuery({
+    queryFn: async (): Promise<Record<string, NextEpisode | undefined>> => {
+      const result: Record<string, NextEpisode | undefined> = {};
       for (const show of await anilist.byMalIds(malIds)) {
-        if (show.ids.mal !== undefined) {
-          exact.set(show.ids.mal, show);
-        }
+        result[`mal:${show.ids.mal ?? ""}`] = show.nextEpisode;
       }
-      const now = Date.now();
-      const result: Airing[] = [];
-      for (const entry of candidates) {
-        const fresh = entry.anime.ids.mal === undefined ? undefined : exact.get(entry.anime.ids.mal);
-        const next = estimateNextEpisode({ ...entry.anime, nextEpisode: fresh?.nextEpisode }, now);
-        if (next !== undefined) {
-          result.push({ airingAt: next.airingAt, entry, episode: next.episode });
-        }
+      for (const show of await anilist.byIds(aniListIds)) {
+        result[`anilist:${show.id}`] = show.nextEpisode;
       }
-      return result.toSorted((a, b) => a.airingAt - b.airingAt);
+      return result;
     },
-    queryKey: ["library-airing", malIds, candidates.length],
+    queryKey: ["library-airing-times", malIds, aniListIds],
     staleTime: 15 * MINUTE_MS,
   });
+
+  // Re-evaluated every minute, so shows that just aired move on to their next episode.
+  const now = useNow();
+  const data = useMemo((): Airing[] | undefined => {
+    if (times.data === undefined) {
+      return undefined;
+    }
+    const result: Airing[] = [];
+    for (const entry of candidates) {
+      const { mal, anilist: aniListId } = entry.anime.ids;
+      const exactKey = mal === undefined ? `anilist:${aniListId ?? ""}` : `mal:${mal}`;
+      const fresh = exactKey in times.data ? times.data[exactKey] : entry.anime.nextEpisode;
+      const next = estimateNextEpisode({ ...entry.anime, nextEpisode: fresh }, now);
+      if (next !== undefined) {
+        result.push({ airingAt: next.airingAt, entry, episode: next.episode });
+      }
+    }
+    return result.toSorted((a, b) => a.airingAt - b.airingAt);
+  }, [candidates, now, times.data]);
+
+  return {
+    data,
+    error: times.error,
+    isError: times.isError,
+    isPending: times.isPending,
+    isRefetching: times.isRefetching,
+    refetch: times.refetch,
+  };
 };

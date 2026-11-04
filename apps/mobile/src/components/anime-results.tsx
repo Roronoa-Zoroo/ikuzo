@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { ActivityIndicator, FlatList, StyleSheet } from "react-native";
 
 import { openAnime } from "@/lib/nav";
-import { animeKey, useLibrary, findEntry } from "@/lib/store";
+import { animeKey, useEntryLookup } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 import { AnimeRow } from "./anime-row";
@@ -22,7 +22,7 @@ const styles = StyleSheet.create({
 
 /** Infinite list of anime rows for search, seasonal and browse screens. */
 export const AnimeResults = ({ query, header, emptyTitle = "No results" }: AnimeResultsProps) => {
-  const entries = useLibrary((state) => state.entries);
+  const lookup = useEntryLookup();
   if (query.isPending && query.fetchStatus !== "idle") {
     return (
       <>
@@ -78,7 +78,7 @@ export const AnimeResults = ({ query, header, emptyTitle = "No results" }: Anime
           onPress={() => {
             openAnime(item);
           }}
-          progress={findEntry(entries, item)?.progress}
+          progress={lookup(item)?.progress}
         />
       )}
     />

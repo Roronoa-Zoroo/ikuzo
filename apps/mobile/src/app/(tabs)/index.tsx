@@ -10,19 +10,27 @@ import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { UpdateSheet } from "@/components/update-sheet";
-import { watchNextEpisode } from "@/lib/episodes";
+import { confirmRemove, watchNextEpisode } from "@/lib/episodes";
 import { duration } from "@/lib/motion";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
-import { displayTitle, useLibrary, useLibraryActions, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
-import type { LibraryEntry, WatchStatus } from "@/lib/store";
+import {
+  displayTitle,
+  getEntries,
+  library,
+  useEntries,
+  useSettings,
+  WATCH_STATUS_LABELS,
+  WATCH_STATUSES,
+} from "@/lib/store";
+import type { HomeSort, LibraryEntry, WatchStatus } from "@/lib/store";
 import { pullQuietly } from "@/lib/sync";
 import { colors, radius, spacing, fontFamily } from "@/lib/theme";
 
 /** Most shows refreshed per pull-to-refresh. */
 const REFRESH_LIMIT = 15;
 
-type SortKey = "updated" | "title" | "score" | "start";
+type SortKey = HomeSort;
 
 const SORT_LABELS: Record<SortKey, string> = {
   score: "Your score",
@@ -56,26 +64,33 @@ const styles = StyleSheet.create({
   sheetTitle: { paddingBottom: spacing.md, paddingHorizontal: spacing.xl },
 });
 
+const refreshLibrary = async (): Promise<void> => {
+  // Only shows you are watching that can still change, newest first: a big imported
+  // list must not queue hundreds of requests in front of what you open next.
+  const stale = getEntries()
+    .filter(
+      (entry) => entry.status === "watching" && (entry.anime.status === "airing" || entry.anime.status === "upcoming")
+    )
+    .toSorted((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, REFRESH_LIMIT);
+  // allSettled never rejects: one failing show must not stop the others from refreshing.
+  const results = await Promise.allSettled(
+    stale.map(async (entry) => await getProvider(entry.anime.source).getAnime(entry.anime.id))
+  );
+  library.refreshSnapshots(results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])));
+  // Pull changes made on AniList / MyAnimeList; failures show up in Settings.
+  await pullQuietly();
+};
+
 const useRefreshLibrary = () => {
   const [refreshing, setRefreshing] = useState(false);
   const refresh = async () => {
+    if (refreshing) {
+      return;
+    }
     setRefreshing(true);
-    const { entries, refreshSnapshots } = useLibrary.getState();
-    // Only shows you are watching that can still change, newest first: a big imported
-    // list must not queue hundreds of requests in front of what you open next.
-    const stale = Object.values(entries)
-      .filter(
-        (entry) => entry.status === "watching" && (entry.anime.status === "airing" || entry.anime.status === "upcoming")
-      )
-      .toSorted((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, REFRESH_LIMIT);
-    // allSettled never rejects: one failing show must not stop the others from refreshing.
-    const results = await Promise.allSettled(
-      stale.map(async (entry) => await getProvider(entry.anime.source).getAnime(entry.anime.id))
-    );
-    refreshSnapshots(results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])));
-    // Pull changes made on AniList / MyAnimeList; failures show up in Settings.
-    await pullQuietly();
+    // refreshLibrary never throws: failed shows are skipped and sync errors land in Settings.
+    await refreshLibrary();
     setRefreshing(false);
   };
   return { refresh, refreshing };
@@ -121,19 +136,16 @@ const StatusList = ({ status, entries, refreshing, onRefresh, onMore }: StatusLi
 );
 
 const HomeScreen = () => {
-  const entries = useLibrary((state) => state.entries);
-  const language = useLibrary((state) => state.settings.titleLanguage);
-  const { toggleBookmark, update, remove } = useLibraryActions();
+  const all = useEntries();
+  const { titleLanguage: language, homeSort: sort } = useSettings();
   const openMenu = useSideMenu((state) => state.setOpen);
   const [tab, setTab] = useState<WatchStatus>("watching");
-  const [sort, setSort] = useState<SortKey>("updated");
   const [filter, setFilter] = useState<string | undefined>();
   const [sortOpen, setSortOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<LibraryEntry | undefined>();
   const [editing, setEditing] = useState<LibraryEntry | undefined>();
   const { refresh, refreshing } = useRefreshLibrary();
 
-  const all = useMemo(() => Object.values(entries), [entries]);
   const counts = useMemo(() => {
     const result: Record<WatchStatus, number> = { completed: 0, dropped: 0, onHold: 0, planned: 0, watching: 0 };
     for (const entry of all) {
@@ -238,7 +250,7 @@ const HomeScreen = () => {
           icon: sort === key ? "radio-button-on" : "radio-button-off",
           label: SORT_LABELS[key],
           onPress: () => {
-            setSort(key);
+            library.setSettings({ homeSort: key });
           },
         }))}
         onClose={() => {
@@ -278,7 +290,7 @@ const HomeScreen = () => {
                   icon: "swap-horizontal" as const,
                   label: `Move to ${WATCH_STATUS_LABELS[status]}`,
                   onPress: () => {
-                    update(menuFor.key, { status });
+                    library.update(menuFor.key, { status });
                   },
                   separated: index === 0,
                 })),
@@ -286,7 +298,7 @@ const HomeScreen = () => {
                   icon: "bookmark-outline",
                   label: "Toggle bookmark",
                   onPress: () => {
-                    toggleBookmark(menuFor.anime);
+                    library.toggleBookmark(menuFor.anime);
                   },
                   separated: true,
                 },
@@ -294,7 +306,7 @@ const HomeScreen = () => {
                   icon: "trash-outline",
                   label: "Delete anime",
                   onPress: () => {
-                    remove(menuFor.key);
+                    confirmRemove(menuFor, displayTitle(menuFor.anime, language));
                   },
                   tone: "danger",
                 },

@@ -17,7 +17,16 @@ import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useCharacters, useRecommendations } from "@/lib/queries";
-import { animeKey, characterKey, useLibrary, useLibraryActions, useEntry, entryKeyFor, findEntry } from "@/lib/store";
+import {
+  animeKey,
+  characterKey,
+  entryKeyFor,
+  findEntry,
+  library,
+  useEntry,
+  useFavoriteCharacters,
+  useIsBookmarked,
+} from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
@@ -114,8 +123,7 @@ const StatTile = ({
 const ListControls = ({ anime }: { anime: AnimeDetail }) => {
   const entry = useEntry(anime);
   const key = entry?.key ?? animeKey(anime);
-  const bookmarked = useLibrary((state) => state.bookmarks[animeKey(anime)] !== undefined);
-  const { toggleBookmark } = useLibraryActions();
+  const bookmarked = useIsBookmarked(anime);
   const [editing, setEditing] = useState(false);
   const openEditor = () => {
     setEditing(true);
@@ -130,12 +138,16 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
           onPress={openEditor}
         />
         <StatTile icon="eye" label={`${entry?.progress ?? 0}/${anime.episodes ?? "?"}`} onPress={openEditor} />
-        <StatTile icon="thumb-up" label={String(entry?.score ?? 0)} onPress={openEditor} />
+        <StatTile
+          icon="thumb-up"
+          label={entry === undefined || entry.score === 0 ? "–" : String(entry.score)}
+          onPress={openEditor}
+        />
         <StatTile
           icon={bookmarked ? "bookmark-multiple" : "bookmark-multiple-outline"}
           label="Bookmark"
           onPress={() => {
-            toggleBookmark(anime);
+            library.toggleBookmark(anime);
           }}
         />
       </View>
@@ -173,7 +185,6 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
 
 const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
   const notify = useEntry(anime)?.notify === true;
-  const { save, update } = useLibraryActions();
   const now = useNow();
   const next = estimateNextEpisode(anime, now);
 
@@ -189,10 +200,10 @@ const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
       );
       return;
     }
-    if (findEntry(useLibrary.getState().entries, anime) === undefined) {
-      save(anime, { status: "planned" });
+    if (findEntry(anime) === undefined) {
+      library.save(anime, { status: "planned" });
     }
-    update(entryKeyFor(anime), { notify: !notify });
+    library.update(entryKeyFor(anime), { notify: !notify });
   };
 
   return (
@@ -350,8 +361,9 @@ const Synopsis = ({ text }: { text?: string }) => {
 
 const Characters = ({ anime }: { anime: AnimeDetail }) => {
   const characters = useCharacters(anime.source, anime.id);
-  const favorites = useLibrary((state) => state.favoriteCharacters);
-  const toggle = useLibrary((state) => state.toggleFavoriteCharacter);
+  const favoriteList = useFavoriteCharacters();
+  const favorites = new Set(favoriteList.map((favorite) => favorite.key));
+  const toggle = library.toggleFavoriteCharacter;
   return (
     <Section
       actionLabel="View all"
@@ -374,7 +386,7 @@ const Characters = ({ anime }: { anime: AnimeDetail }) => {
         renderItem={({ item }) => (
           <PosterTile
             favorite={{
-              active: favorites[characterKey(item.source ?? anime.source, item.id)] !== undefined,
+              active: favorites.has(characterKey(item.source ?? anime.source, item.id)),
               onToggle: () => {
                 toggle(item.source ?? anime.source, item);
               },

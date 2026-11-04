@@ -1,123 +1,228 @@
-import type { ListStatus, RemoteEntry } from "@ikuzo/anime/trackers";
+import { diffList, isEmptyChange } from "@ikuzo/anime/sync-plan";
+import type { PlannedInsert, PlannedUpdate } from "@ikuzo/anime/sync-plan";
+import type { ListChange, TrackerId } from "@ikuzo/anime/trackers";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { useShallow } from "zustand/react/shallow";
+import { eq, or, useLiveQuery } from "@tanstack/react-db";
+import { useMemo } from "react";
 
-import { kv } from "./kv";
+import {
+  bookmarksCollection,
+  entriesCollection,
+  favoriteCharactersCollection,
+  favoriteShowsCollection,
+  SETTINGS_ID,
+  settingsCollection,
+  withIdFields,
+} from "./db";
+import { emitLibraryChange } from "./library-events";
+import { DEFAULT_SETTINGS } from "./library-types";
+import type {
+  FavoriteCharacter,
+  LibraryEntry,
+  Note,
+  SavedAnime,
+  Settings,
+  TitleLanguage,
+  WatchStatus,
+} from "./library-types";
 
-export type WatchStatus = ListStatus;
+export { WATCH_STATUS_LABELS, WATCH_STATUSES } from "./library-types";
+export type {
+  FavoriteCharacter,
+  HomeSort,
+  LibraryEntry,
+  Note,
+  SavedAnime,
+  Settings,
+  TitleLanguage,
+  WatchStatus,
+} from "./library-types";
 
-export const WATCH_STATUSES: readonly WatchStatus[] = ["watching", "planned", "onHold", "completed", "dropped"];
-
-export const WATCH_STATUS_LABELS: Record<WatchStatus, string> = {
-  completed: "Completed",
-  dropped: "Dropped",
-  onHold: "On hold",
-  planned: "Plan to watch",
-  watching: "Watching",
-};
-
-export interface Note {
-  id: string;
-  episode?: number;
-  text: string;
-  createdAt: number;
-}
-
-export interface LibraryEntry {
-  key: string;
-  /** Snapshot of the show, refreshed from the source when the list is refreshed. */
-  anime: AnimeSummary;
-  status: WatchStatus;
-  progress: number;
-  /** 0 = not scored, otherwise 1–10 */
-  score: number;
-  notify: boolean;
-  notes: Note[];
-  addedAt: number;
-  updatedAt: number;
-}
-
-export interface SavedAnime {
-  anime: AnimeSummary;
-  addedAt: number;
-}
-
-export interface FavoriteCharacter {
-  key: string;
-  source: Source;
-  id: number;
-  name: string;
-  image?: string;
-  addedAt: number;
-}
-
-export type TitleLanguage = "romaji" | "english";
-
-export interface Settings {
-  source: Source;
-  titleLanguage: TitleLanguage;
-  /** Hide shows that are not out yet from the Calendar "My shows" tab */
-  calendarHideUpcoming: boolean;
-}
-
-interface LibraryState {
-  entries: Record<string, LibraryEntry>;
-  bookmarks: Record<string, SavedAnime>;
-  favoriteShows: Record<string, SavedAnime>;
-  favoriteCharacters: Record<string, FavoriteCharacter>;
-  settings: Settings;
-}
-
-interface LibraryActions {
-  save: (anime: AnimeSummary, patch?: Partial<Pick<LibraryEntry, "status" | "progress" | "score">>) => void;
-  update: (key: string, patch: Partial<Pick<LibraryEntry, "status" | "progress" | "score" | "notify">>) => void;
-  increment: (key: string) => void;
-  remove: (key: string) => void;
-  refreshSnapshots: (shows: AnimeSummary[]) => void;
-  toggleBookmark: (anime: AnimeSummary) => void;
-  toggleFavoriteShow: (anime: AnimeSummary) => void;
-  toggleFavoriteCharacter: (source: Source, character: Pick<CharacterRole, "id" | "name" | "image">) => void;
-  addNote: (key: string, text: string, episode?: number) => void;
-  deleteNote: (key: string, noteId: string) => void;
-  setSettings: (patch: Partial<Settings>) => void;
-  importBackup: (backup: Backup) => void;
-  /** Applies a list downloaded from AniList or MyAnimeList; the newer side wins per show. */
-  mergeRemote: (remote: RemoteEntry[]) => MergeResult;
-}
-
-export interface MergeResult {
-  added: number;
-  updated: number;
-  /** Shows changed in Ikuzo after the service's copy: these should be sent back. */
-  localNewer: string[];
-}
-
-export interface Backup extends LibraryState {
-  app: "ikuzo";
-  version: number;
-  exportedAt: string;
-}
-
-const BACKUP_VERSION = 1;
 const ID_RADIX = 36;
 
 export const animeKey = (anime: Pick<AnimeSummary, "source" | "id">): string => `${anime.source}:${anime.id}`;
 
 export const characterKey = (source: Source, id: number): string => `${source}:${id}`;
 
+/** Title in the user's preferred language. */
+export const displayTitle = (anime: AnimeSummary, language: TitleLanguage): string =>
+  language === "english" ? (anime.titleEnglish ?? anime.title) : anime.title;
+
 type EntryLookup = Pick<AnimeSummary, "source" | "id" | "ids">;
 
-const sameShow = (a: AnimeSummary["ids"], b: AnimeSummary["ids"]): boolean =>
-  (a.mal !== undefined && a.mal === b.mal) || (a.anilist !== undefined && a.anilist === b.anilist);
+/** TanStack DB adds virtual `$…` fields to rows it returns; they must not be written back. */
+export const stripVirtual = <T extends object>(row: T): T => {
+  const copy = { ...row };
+  for (const name of Object.keys(copy)) {
+    if (name.startsWith("$")) {
+      Reflect.deleteProperty(copy, name);
+    }
+  }
+  return copy;
+};
+
+const newId = (): string => `${Date.now().toString(ID_RADIX)}${Math.random().toString(ID_RADIX).slice(2)}`;
+
+// ── Reading outside React (sync engine, notifications, actions) ─────────────
+
+export const getEntries = (): LibraryEntry[] => entriesCollection.toArray.map(stripVirtual);
+
+export const getEntry = (key: string): LibraryEntry | undefined => {
+  const entry = entriesCollection.get(key);
+  return entry === undefined ? undefined : stripVirtual(entry);
+};
 
 /**
  * The library entry for a show, whichever source it was added from: a show added
  * from MyAnimeList is the same entry when opened through AniList.
  */
-export const findEntry = (entries: Record<string, LibraryEntry>, anime: EntryLookup): LibraryEntry | undefined =>
-  entries[animeKey(anime)] ?? Object.values(entries).find((entry) => sameShow(entry.anime.ids, anime.ids));
+export const findEntry = (anime: EntryLookup): LibraryEntry | undefined => {
+  const direct = getEntry(animeKey(anime));
+  if (direct !== undefined) {
+    return direct;
+  }
+  const { mal, anilist } = anime.ids;
+  const match = entriesCollection.toArray.find(
+    (entry) => (mal !== undefined && entry.malId === mal) || (anilist !== undefined && entry.anilistId === anilist)
+  );
+  return match === undefined ? undefined : stripVirtual(match);
+};
+
+/** Key of the show's entry if it is in the library, otherwise the key a new entry would get. */
+export const entryKeyFor = (anime: EntryLookup): string => findEntry(anime)?.key ?? animeKey(anime);
+
+export const getSettings = (): Settings => settingsCollection.get(SETTINGS_ID) ?? DEFAULT_SETTINGS;
+
+// ── Hooks (live queries) ────────────────────────────────────────────────────
+
+export const useEntries = (): LibraryEntry[] => {
+  const { data } = useLiveQuery({ query: (q) => q.from({ entry: entriesCollection }) });
+  return data;
+};
+
+export type EntryLookupFn = (anime: EntryLookup) => LibraryEntry | undefined;
+
+/** One lookup for long lists (search results, bookmarks): built once per library change. */
+export const useEntryLookup = (): EntryLookupFn => {
+  const entries = useEntries();
+  return useMemo(() => {
+    const byKey = new Map<string, LibraryEntry>();
+    const byMal = new Map<number, LibraryEntry>();
+    const byAniList = new Map<number, LibraryEntry>();
+    for (const entry of entries) {
+      byKey.set(entry.key, entry);
+      if (entry.malId !== undefined) {
+        byMal.set(entry.malId, entry);
+      }
+      if (entry.anilistId !== undefined) {
+        byAniList.set(entry.anilistId, entry);
+      }
+    }
+    return (anime) =>
+      byKey.get(animeKey(anime)) ??
+      (anime.ids.mal === undefined ? undefined : byMal.get(anime.ids.mal)) ??
+      (anime.ids.anilist === undefined ? undefined : byAniList.get(anime.ids.anilist));
+  }, [entries]);
+};
+
+/** The library entry for a show, matched across AniList and MyAnimeList ids (indexed lookup). */
+export const useEntry = (anime: EntryLookup): LibraryEntry | undefined => {
+  const key = animeKey(anime);
+  const { mal, anilist } = anime.ids;
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ entry: entriesCollection })
+        .where(({ entry }) => {
+          let match = eq(entry.key, key);
+          if (mal !== undefined) {
+            match = or(match, eq(entry.malId, mal));
+          }
+          if (anilist !== undefined) {
+            match = or(match, eq(entry.anilistId, anilist));
+          }
+          return match;
+        })
+        .findOne(),
+  });
+  return data;
+};
+
+export const useSettings = (): Settings => {
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ settings: settingsCollection })
+        .where(({ settings }) => eq(settings.id, SETTINGS_ID))
+        .findOne(),
+  });
+  return data ?? DEFAULT_SETTINGS;
+};
+
+/** Bookmarks, newest first. */
+export const useBookmarks = (): SavedAnime[] => {
+  const { data } = useLiveQuery({
+    query: (q) => q.from({ bookmark: bookmarksCollection }).orderBy(({ bookmark }) => bookmark.addedAt, "desc"),
+  });
+  return data;
+};
+
+/** Favourite shows, newest first. */
+export const useFavoriteShows = (): SavedAnime[] => {
+  const { data } = useLiveQuery({
+    query: (q) => q.from({ favorite: favoriteShowsCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc"),
+  });
+  return data;
+};
+
+/** Favourite characters, newest first. */
+export const useFavoriteCharacters = (): FavoriteCharacter[] => {
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q.from({ favorite: favoriteCharactersCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc"),
+  });
+  return data;
+};
+
+export const useIsBookmarked = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
+  const key = animeKey(anime);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ bookmark: bookmarksCollection })
+        .where(({ bookmark }) => eq(bookmark.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
+
+export const useIsFavoriteShow = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
+  const key = animeKey(anime);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ favorite: favoriteShowsCollection })
+        .where(({ favorite }) => eq(favorite.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
+
+export const useIsFavoriteCharacter = (source: Source, id: number): boolean => {
+  const key = characterKey(source, id);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ favorite: favoriteCharactersCollection })
+        .where(({ favorite }) => eq(favorite.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
+
+// ── Writing ────────────────────────────────────────────────────────────────
+
+type ListPatch = Partial<Pick<LibraryEntry, "status" | "progress" | "score">>;
 
 const clampProgress = (anime: AnimeSummary, progress: number): number => {
   const max = anime.episodes ?? Number.POSITIVE_INFINITY;
@@ -125,314 +230,281 @@ const clampProgress = (anime: AnimeSummary, progress: number): number => {
 };
 
 /** Moving progress implies a status: started → watching, reached the end → completed. */
-const statusForProgress = (entry: LibraryEntry, progress: number): WatchStatus => {
-  const total = entry.anime.episodes;
+const statusForProgress = (anime: AnimeSummary, current: WatchStatus, progress: number): WatchStatus => {
+  const total = anime.episodes;
   if (total !== null && total > 0 && progress >= total) {
     return "completed";
   }
-  if (progress > 0 && (entry.status === "planned" || entry.status === "onHold")) {
+  if (progress > 0 && (current === "planned" || current === "onHold")) {
     return "watching";
   }
-  return entry.status;
+  return current;
 };
 
-/** Keeps the entry's own snapshot but learns the other service's id. */
-const mergeIds = (anime: AnimeSummary, other: AnimeSummary): AnimeSummary => ({
-  ...anime,
-  ids: { ...other.ids, ...anime.ids },
-});
-
-const without = <T>(record: Record<string, T>, key: string): Record<string, T> =>
-  Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
-
-const newId = (): string => `${Date.now().toString(ID_RADIX)}${Math.random().toString(ID_RADIX).slice(2)}`;
-
-const initialState: LibraryState = {
-  bookmarks: {},
-  entries: {},
-  favoriteCharacters: {},
-  favoriteShows: {},
-  settings: { calendarHideUpcoming: false, source: "anilist", titleLanguage: "romaji" },
+/** The list values after applying `patch` to `entry`, with the usual progress/status rules. */
+const nextListValues = (
+  anime: AnimeSummary,
+  current: Pick<LibraryEntry, "status" | "progress" | "score">,
+  patch: ListPatch
+): Pick<LibraryEntry, "status" | "progress" | "score"> => {
+  let progress = clampProgress(anime, patch.progress ?? current.progress);
+  let status = patch.status ?? current.status;
+  if (patch.progress !== undefined && patch.status === undefined) {
+    status = statusForProgress(anime, current.status, progress);
+  }
+  if (patch.status === "completed" && anime.episodes !== null) {
+    progress = anime.episodes;
+  }
+  return { progress, score: patch.score ?? current.score, status };
 };
 
-export const useLibrary = create<LibraryState & LibraryActions>()(
-  persist(
-    (set) => ({
-      ...initialState,
+/** Keeps the entry's snapshot from its own source, but learns the other service's ids. */
+const mergeSnapshot = (current: AnimeSummary, incoming: AnimeSummary): AnimeSummary =>
+  current.source === incoming.source
+    ? { ...current, ...incoming, ids: { ...current.ids, ...incoming.ids } }
+    : { ...current, ids: { ...incoming.ids, ...current.ids } };
 
-      addNote: (key, text, episode) => {
-        set((state) => {
-          const entry = state.entries[key];
-          if (entry === undefined) {
-            return state;
-          }
-          const note: Note = { createdAt: Date.now(), episode, id: newId(), text };
-          return { entries: { ...state.entries, [key]: { ...entry, notes: [note, ...entry.notes] } } };
-        });
-      },
+const writeEntry = (key: string, next: LibraryEntry): void => {
+  entriesCollection.update(key, (draft) => {
+    Object.assign(draft, withIdFields(next));
+  });
+};
 
-      deleteNote: (key, noteId) => {
-        set((state) => {
-          const entry = state.entries[key];
-          if (entry === undefined) {
-            return state;
-          }
-          const notes = entry.notes.filter((note) => note.id !== noteId);
-          return { entries: { ...state.entries, [key]: { ...entry, notes } } };
-        });
-      },
+/** Adds a show to the library, or changes its list values. */
+const save = (anime: AnimeSummary, patch: ListPatch = {}): LibraryEntry => {
+  const existing = findEntry(anime);
+  const now = Date.now();
+  if (existing === undefined) {
+    const values = nextListValues(anime, { progress: 0, score: 0, status: "planned" }, patch);
+    const entry = withIdFields({
+      ...values,
+      addedAt: now,
+      anime,
+      key: animeKey(anime),
+      notes: [],
+      notify: false,
+      updatedAt: now,
+    });
+    entriesCollection.insert(entry);
+    emitLibraryChange({ change: values, entry, isNew: true, kind: "save" });
+    return entry;
+  }
+  const merged = mergeSnapshot(existing.anime, anime);
+  const values = nextListValues(merged, existing, patch);
+  const change = diffList(existing, values);
+  const next = { ...existing, ...values, anime: merged, updatedAt: isEmptyChange(change) ? existing.updatedAt : now };
+  writeEntry(existing.key, next);
+  if (!isEmptyChange(change)) {
+    emitLibraryChange({ change, entry: next, isNew: false, kind: "save" });
+  }
+  return next;
+};
 
-      importBackup: (backup) => {
-        set({
-          bookmarks: backup.bookmarks,
-          entries: backup.entries,
-          favoriteCharacters: backup.favoriteCharacters,
-          favoriteShows: backup.favoriteShows,
-          settings: { ...initialState.settings, ...backup.settings },
-        });
-      },
+const update = (key: string, patch: ListPatch & { notify?: boolean }): void => {
+  const entry = getEntry(key);
+  if (entry === undefined) {
+    return;
+  }
+  const values = nextListValues(entry.anime, entry, patch);
+  const change = diffList(entry, values);
+  const next = {
+    ...entry,
+    ...values,
+    notify: patch.notify ?? entry.notify,
+    updatedAt: isEmptyChange(change) ? entry.updatedAt : Date.now(),
+  };
+  writeEntry(key, next);
+  if (!isEmptyChange(change)) {
+    emitLibraryChange({ change, entry: next, isNew: false, kind: "save" });
+  }
+};
 
-      increment: (key) => {
-        set((state) => {
-          const entry = state.entries[key];
-          if (entry === undefined) {
-            return state;
-          }
-          const progress = clampProgress(entry.anime, entry.progress + 1);
-          const status = statusForProgress(entry, progress);
-          return { entries: { ...state.entries, [key]: { ...entry, progress, status, updatedAt: Date.now() } } };
-        });
-      },
+const increment = (key: string): void => {
+  const entry = getEntry(key);
+  if (entry !== undefined) {
+    update(key, { progress: entry.progress + 1 });
+  }
+};
 
-      mergeRemote: (remote) => {
-        const result: MergeResult = { added: 0, localNewer: [], updated: 0 };
-        set((state) => {
-          const entries = { ...state.entries };
-          const byMal = new Map<number, string>();
-          const byAniList = new Map<number, string>();
-          const index = (entry: LibraryEntry) => {
-            if (entry.anime.ids.mal !== undefined) {
-              byMal.set(entry.anime.ids.mal, entry.key);
-            }
-            if (entry.anime.ids.anilist !== undefined) {
-              byAniList.set(entry.anime.ids.anilist, entry.key);
-            }
-          };
-          for (const entry of Object.values(entries)) {
-            index(entry);
-          }
-          for (const item of remote) {
-            const { ids } = item.anime;
-            const key =
-              (ids.mal === undefined ? undefined : byMal.get(ids.mal)) ??
-              (ids.anilist === undefined ? undefined : byAniList.get(ids.anilist));
-            const local = key === undefined ? undefined : entries[key];
-            const changedAt = item.updatedAt > 0 ? item.updatedAt : Date.now();
-            if (local === undefined) {
-              const entry: LibraryEntry = {
-                addedAt: changedAt,
-                anime: item.anime,
-                key: animeKey(item.anime),
-                notes: [],
-                notify: false,
-                progress: item.progress,
-                score: item.score,
-                status: item.status,
-                updatedAt: changedAt,
-              };
-              entries[entry.key] = entry;
-              index(entry);
-              result.added += 1;
-              continue;
-            }
-            const anime = mergeIds(local.anime, item.anime);
-            const same = local.status === item.status && local.progress === item.progress && local.score === item.score;
-            if (same) {
-              entries[local.key] = { ...local, anime };
-            } else if (item.updatedAt >= local.updatedAt) {
-              entries[local.key] = {
-                ...local,
-                anime,
-                progress: item.progress,
-                score: item.score,
-                status: item.status,
-                updatedAt: changedAt,
-              };
-              result.updated += 1;
-            } else {
-              entries[local.key] = { ...local, anime };
-              result.localNewer.push(local.key);
-            }
-          }
-          return { entries };
-        });
-        return result;
-      },
+/** Removes a show (and its notes). Returns the removed entry so the caller can offer Undo. */
+const remove = (key: string): LibraryEntry | undefined => {
+  const entry = getEntry(key);
+  if (entry === undefined) {
+    return undefined;
+  }
+  entriesCollection.delete(key);
+  emitLibraryChange({ entry, kind: "remove" });
+  return entry;
+};
 
-      refreshSnapshots: (shows) => {
-        set((state) => {
-          const entries = { ...state.entries };
-          for (const anime of shows) {
-            const key = animeKey(anime);
-            const entry = entries[key];
-            if (entry !== undefined) {
-              entries[key] = { ...entry, anime: { ...entry.anime, ...anime } };
-            }
-          }
-          return { entries };
-        });
-      },
+/** Puts back an entry exactly as it was (Undo after delete). */
+const restoreEntry = (entry: LibraryEntry): void => {
+  if (getEntry(entry.key) !== undefined) {
+    return;
+  }
+  const clean = withIdFields(stripVirtual(entry));
+  entriesCollection.insert(clean);
+  const change: ListChange = { progress: clean.progress, score: clean.score, status: clean.status };
+  emitLibraryChange({ change, entry: clean, isNew: true, kind: "save" });
+};
 
-      remove: (key) => {
-        set((state) => ({ entries: without(state.entries, key) }));
-      },
-
-      save: (anime, patch = {}) => {
-        set((state) => {
-          const existing = findEntry(state.entries, anime);
-          const key = existing?.key ?? animeKey(anime);
-          const now = Date.now();
-          const base: LibraryEntry = existing ?? {
-            addedAt: now,
-            anime,
-            key,
-            notes: [],
-            notify: false,
-            progress: 0,
-            score: 0,
-            status: "planned",
-            updatedAt: now,
-          };
-          const progress = clampProgress(anime, patch.progress ?? base.progress);
-          const entry: LibraryEntry = {
-            ...base,
-            ...patch,
-            anime: existing?.anime.source === anime.source ? { ...base.anime, ...anime } : mergeIds(base.anime, anime),
-            progress,
-            updatedAt: now,
-          };
-          if (patch.status === "completed" && anime.episodes !== null) {
-            entry.progress = anime.episodes;
-          }
-          return { entries: { ...state.entries, [key]: entry } };
-        });
-      },
-
-      setSettings: (patch) => {
-        set((state) => ({ settings: { ...state.settings, ...patch } }));
-      },
-
-      toggleBookmark: (anime) => {
-        set((state) => {
-          const key = animeKey(anime);
-          if (state.bookmarks[key] !== undefined) {
-            return { bookmarks: without(state.bookmarks, key) };
-          }
-          return { bookmarks: { ...state.bookmarks, [key]: { addedAt: Date.now(), anime } } };
-        });
-      },
-
-      toggleFavoriteCharacter: (source, character) => {
-        set((state) => {
-          const key = characterKey(source, character.id);
-          if (state.favoriteCharacters[key] !== undefined) {
-            return { favoriteCharacters: without(state.favoriteCharacters, key) };
-          }
-          const favorite: FavoriteCharacter = { addedAt: Date.now(), ...character, key, source };
-          return { favoriteCharacters: { ...state.favoriteCharacters, [key]: favorite } };
-        });
-      },
-
-      toggleFavoriteShow: (anime) => {
-        set((state) => {
-          const key = animeKey(anime);
-          if (state.favoriteShows[key] !== undefined) {
-            return { favoriteShows: without(state.favoriteShows, key) };
-          }
-          return { favoriteShows: { ...state.favoriteShows, [key]: { addedAt: Date.now(), anime } } };
-        });
-      },
-
-      update: (key, patch) => {
-        set((state) => {
-          const entry = state.entries[key];
-          if (entry === undefined) {
-            return state;
-          }
-          const progress = clampProgress(entry.anime, patch.progress ?? entry.progress);
-          const next: LibraryEntry = { ...entry, ...patch, progress, updatedAt: Date.now() };
-          if (patch.progress !== undefined && patch.status === undefined) {
-            next.status = statusForProgress(entry, progress);
-          }
-          if (patch.status === "completed" && entry.anime.episodes !== null) {
-            next.progress = entry.anime.episodes;
-          }
-          return { entries: { ...state.entries, [key]: next } };
-        });
-      },
-    }),
-    {
-      name: "ikuzo-library",
-      partialize: ({ entries, bookmarks, favoriteShows, favoriteCharacters, settings }): LibraryState => ({
-        bookmarks,
-        entries,
-        favoriteCharacters,
-        favoriteShows,
-        settings,
-      }),
-      storage: createJSONStorage(() => kv),
-      version: BACKUP_VERSION,
+/** Newer show data (episode counts, air dates) for entries; list values are untouched and nothing syncs. */
+const refreshSnapshots = (shows: AnimeSummary[]): void => {
+  for (const anime of shows) {
+    const entry = findEntry(anime);
+    if (entry !== undefined) {
+      writeEntry(entry.key, { ...entry, anime: mergeSnapshot(entry.anime, anime) });
     }
-  )
-);
+  }
+};
 
-export const createBackup = (state: LibraryState): Backup => ({
-  app: "ikuzo",
-  bookmarks: state.bookmarks,
-  entries: state.entries,
-  exportedAt: new Date().toISOString(),
-  favoriteCharacters: state.favoriteCharacters,
-  favoriteShows: state.favoriteShows,
-  settings: state.settings,
-  version: BACKUP_VERSION,
-});
+/** Applies a sync plan from AniList / MyAnimeList in two bulk writes. Nothing is sent back from here. */
+const applySyncPlan = async (inserts: PlannedInsert[], updates: PlannedUpdate[]): Promise<void> => {
+  const fresh = inserts.filter((item) => getEntry(item.key) === undefined);
+  const pending: Promise<unknown>[] = [];
+  if (fresh.length > 0) {
+    const rows = fresh.map((item) =>
+      withIdFields({
+        addedAt: item.updatedAt,
+        anime: item.anime,
+        key: item.key,
+        notes: [],
+        notify: false,
+        progress: item.progress,
+        score: item.score,
+        status: item.status,
+        trackers: item.trackers,
+        updatedAt: item.updatedAt,
+      })
+    );
+    pending.push(entriesCollection.insert(rows).when("settled"));
+  }
+  const byKey = new Map(updates.filter((item) => getEntry(item.key) !== undefined).map((item) => [item.key, item]));
+  if (byKey.size > 0) {
+    const transaction = entriesCollection.update([...byKey.keys()], (drafts) => {
+      for (const draft of drafts) {
+        const item = byKey.get(draft.key);
+        if (item !== undefined) {
+          if (item.values !== undefined) {
+            Object.assign(draft, item.values);
+          }
+          draft.anime = { ...draft.anime, ids: item.ids };
+          draft.malId = item.ids.mal;
+          draft.anilistId = item.ids.anilist;
+          draft.trackers = item.trackers;
+        }
+      }
+    });
+    pending.push(transaction.when("settled"));
+  }
+  await Promise.all(pending);
+};
 
-export const isBackup = (value: unknown): value is Backup =>
-  typeof value === "object" &&
-  value !== null &&
-  "app" in value &&
-  value.app === "ikuzo" &&
-  "entries" in value &&
-  typeof value.entries === "object";
+/** Records that a service now has (at > 0) or no longer has (0) the show. */
+const markTracker = (key: string, tracker: TrackerId, at: number): void => {
+  if (getEntry(key) !== undefined) {
+    entriesCollection.update(key, (draft) => {
+      draft.trackers = { ...draft.trackers, [tracker]: at };
+    });
+  }
+};
 
-/** Title in the user's preferred language. */
-export const displayTitle = (anime: AnimeSummary, language: TitleLanguage): string =>
-  language === "english" ? (anime.titleEnglish ?? anime.title) : anime.title;
+/** Forgets which shows were on a service (after signing out of it). */
+const clearTrackerMarks = async (tracker: TrackerId): Promise<void> => {
+  const keys = entriesCollection.toArray.filter((entry) => entry.trackers?.[tracker] !== undefined).map((e) => e.key);
+  if (keys.length > 0) {
+    await entriesCollection
+      .update(keys, (drafts) => {
+        for (const draft of drafts) {
+          const { [tracker]: _removed, ...rest } = draft.trackers ?? {};
+          draft.trackers = rest;
+        }
+      })
+      .when("settled");
+  }
+};
 
-/** Stable action functions for components (actions never change, so this never re-renders). */
-export const useLibraryActions = (): LibraryActions =>
-  useLibrary(
-    useShallow((state) => ({
-      addNote: state.addNote,
-      deleteNote: state.deleteNote,
-      importBackup: state.importBackup,
-      increment: state.increment,
-      mergeRemote: state.mergeRemote,
-      refreshSnapshots: state.refreshSnapshots,
-      remove: state.remove,
-      save: state.save,
-      setSettings: state.setSettings,
-      toggleBookmark: state.toggleBookmark,
-      toggleFavoriteCharacter: state.toggleFavoriteCharacter,
-      toggleFavoriteShow: state.toggleFavoriteShow,
-      update: state.update,
-    }))
-  );
+const addNote = (key: string, text: string, episode?: number): void => {
+  const note: Note = { createdAt: Date.now(), episode, id: newId(), text };
+  entriesCollection.update(key, (draft) => {
+    draft.notes = [note, ...draft.notes];
+  });
+};
 
-/** The library entry for a show, matched across AniList and MyAnimeList ids. */
-export const useEntry = (anime: EntryLookup): LibraryEntry | undefined =>
-  useLibrary((state) => findEntry(state.entries, anime));
+const deleteNote = (key: string, noteId: string): Note | undefined => {
+  const note = getEntry(key)?.notes.find((item) => item.id === noteId);
+  if (note !== undefined) {
+    entriesCollection.update(key, (draft) => {
+      draft.notes = draft.notes.filter((item) => item.id !== noteId);
+    });
+  }
+  return note;
+};
 
-/** Key of the show's entry if it is in the library, otherwise the key a new entry would get. */
-export const entryKeyFor = (anime: EntryLookup): string =>
-  findEntry(useLibrary.getState().entries, anime)?.key ?? animeKey(anime);
+const restoreNote = (key: string, note: Note): void => {
+  if (getEntry(key) !== undefined) {
+    entriesCollection.update(key, (draft) => {
+      draft.notes = [note, ...draft.notes].toSorted((a, b) => b.createdAt - a.createdAt);
+    });
+  }
+};
+
+const toggleSaved = (collection: typeof bookmarksCollection, anime: AnimeSummary): boolean => {
+  const key = animeKey(anime);
+  if (collection.has(key)) {
+    collection.delete(key);
+    return false;
+  }
+  collection.insert({ addedAt: Date.now(), anime, key });
+  return true;
+};
+
+const toggleBookmark = (anime: AnimeSummary): boolean => toggleSaved(bookmarksCollection, anime);
+
+const toggleFavoriteShow = (anime: AnimeSummary): boolean => toggleSaved(favoriteShowsCollection, anime);
+
+const toggleFavoriteCharacter = (source: Source, character: Pick<CharacterRole, "id" | "name" | "image">): void => {
+  const key = characterKey(source, character.id);
+  if (favoriteCharactersCollection.has(key)) {
+    favoriteCharactersCollection.delete(key);
+    return;
+  }
+  favoriteCharactersCollection.insert({
+    addedAt: Date.now(),
+    id: character.id,
+    image: character.image,
+    key,
+    name: character.name,
+    source,
+  });
+};
+
+const setSettings = (patch: Partial<Settings>): void => {
+  if (settingsCollection.has(SETTINGS_ID)) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      Object.assign(draft, patch);
+    });
+  } else {
+    settingsCollection.insert({ ...DEFAULT_SETTINGS, ...patch, id: SETTINGS_ID });
+  }
+};
+
+/** Every write to the library goes through these. */
+export const library = {
+  addNote,
+  applySyncPlan,
+  clearTrackerMarks,
+  deleteNote,
+  increment,
+  markTracker,
+  refreshSnapshots,
+  remove,
+  restoreEntry,
+  restoreNote,
+  save,
+  setSettings,
+  toggleBookmark,
+  toggleFavoriteCharacter,
+  toggleFavoriteShow,
+  update,
+};

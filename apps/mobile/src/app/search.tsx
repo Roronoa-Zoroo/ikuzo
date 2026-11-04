@@ -8,7 +8,7 @@ import { ChipRow } from "@/components/chips";
 import type { ChipOption } from "@/components/chips";
 import { Header } from "@/components/header";
 import { useGenres, useSearch } from "@/lib/queries";
-import { useLibrary } from "@/lib/store";
+import { useSettings } from "@/lib/store";
 import { colors, radius, spacing, fontFamily } from "@/lib/theme";
 
 const DEBOUNCE_MS = 400;
@@ -69,7 +69,7 @@ const useDebounced = <T,>(value: T, delay: number): T => {
 
 const SearchScreen = () => {
   const params = useLocalSearchParams<{ advanced?: string }>();
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const genres = useGenres(source);
   const [text, setText] = useState("");
   const [showFilters, setShowFilters] = useState(params.advanced === "1");

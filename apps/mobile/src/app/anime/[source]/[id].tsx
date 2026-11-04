@@ -26,11 +26,12 @@ import { ErrorState, Loading } from "@/components/states";
 import { TabStrip } from "@/components/tab-strip";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
+import { confirmRemove } from "@/lib/episodes";
 import { openLink } from "@/lib/links";
 import { duration } from "@/lib/motion";
 import { useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
-import { animeKey, displayTitle, useLibrary, useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
+import { displayTitle, library, useEntry, useIsBookmarked, useIsFavoriteShow, useSettings } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 type DetailTab = "main" | "episodes" | "notes" | "reviews" | "stats" | "songs";
@@ -104,28 +105,18 @@ const showSynonyms = (anime: AnimeDetail) => {
 };
 
 const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
-  const key = animeKey(anime);
-  const inList = useEntry(anime) !== undefined;
-  const bookmarked = useLibrary((state) => state.bookmarks[key] !== undefined);
-  const favorite = useLibrary((state) => state.favoriteShows[key] !== undefined);
-  const { remove, toggleBookmark, toggleFavoriteShow } = useLibraryActions();
+  const entry = useEntry(anime);
+  const bookmarked = useIsBookmarked(anime);
+  const favorite = useIsFavoriteShow(anime);
+  const inList = entry !== undefined;
 
   const items: OptionItem[] = [];
-  if (inList) {
+  if (entry !== undefined) {
     items.push({
       icon: "trash",
       label: "Delete anime",
       onPress: () => {
-        Alert.alert("Delete anime", `Remove ${title} and its notes from your list?`, [
-          { style: "cancel", text: "Cancel" },
-          {
-            onPress: () => {
-              remove(entryKeyFor(anime));
-            },
-            style: "destructive",
-            text: "Delete",
-          },
-        ]);
+        confirmRemove(entry, title);
       },
       tone: "danger",
     });
@@ -135,7 +126,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
       icon: bookmarked ? "bookmark" : "bookmark-outline",
       label: bookmarked ? "Remove bookmark" : "Add to bookmarks",
       onPress: () => {
-        toggleBookmark(anime);
+        library.toggleBookmark(anime);
       },
       separated: inList,
     },
@@ -143,7 +134,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
       icon: favorite ? "heart" : "heart-outline",
       label: favorite ? "Remove from favorites" : "Add to favorites",
       onPress: () => {
-        toggleFavoriteShow(anime);
+        library.toggleFavoriteShow(anime);
       },
     },
     {
@@ -181,7 +172,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
 
 const Detail = ({ anime }: { anime: AnimeDetail }) => {
   const insets = useSafeAreaInsets();
-  const language = useLibrary((state) => state.settings.titleLanguage);
+  const language = useSettings().titleLanguage;
   const [tab, setTab] = useState<DetailTab>("main");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [tabsTop, setTabsTop] = useState(BANNER_HEIGHT + POSTER_HEIGHT / 2);

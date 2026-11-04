@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 
 import { Header } from "@/components/header";
@@ -7,7 +7,7 @@ import { PosterTile } from "@/components/poster-tile";
 import { EmptyState } from "@/components/states";
 import { TabStrip } from "@/components/tab-strip";
 import { openAnime, openCharacter } from "@/lib/nav";
-import { displayTitle, useLibrary } from "@/lib/store";
+import { displayTitle, library, useFavoriteCharacters, useFavoriteShows, useSettings } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 type FavoriteTab = "shows" | "characters";
@@ -22,15 +22,10 @@ const styles = StyleSheet.create({
 
 const FavoritesScreen = () => {
   const [tab, setTab] = useState<FavoriteTab>("shows");
-  const shows = useLibrary((state) => state.favoriteShows);
-  const characters = useLibrary((state) => state.favoriteCharacters);
-  const language = useLibrary((state) => state.settings.titleLanguage);
-  const toggleCharacter = useLibrary((state) => state.toggleFavoriteCharacter);
-  const showList = useMemo(() => Object.values(shows).toSorted((a, b) => b.addedAt - a.addedAt), [shows]);
-  const characterList = useMemo(
-    () => Object.values(characters).toSorted((a, b) => b.addedAt - a.addedAt),
-    [characters]
-  );
+  const showList = useFavoriteShows();
+  const characterList = useFavoriteCharacters();
+  const language = useSettings().titleLanguage;
+  const toggleCharacter = library.toggleFavoriteCharacter;
 
   return (
     <View style={styles.screen}>

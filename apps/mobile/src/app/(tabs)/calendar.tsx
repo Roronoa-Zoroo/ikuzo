@@ -15,7 +15,7 @@ import { formatAirTime } from "@/lib/format";
 import { openAnime } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useLibraryAiring, useSchedule } from "@/lib/queries";
-import { animeKey, useLibrary, useLibraryActions, useEntry, entryKeyFor } from "@/lib/store";
+import { animeKey, entryKeyFor, library, useEntry, useSettings } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
 
@@ -38,7 +38,6 @@ const styles = StyleSheet.create({
 
 const BellButton = ({ anime }: { anime: AnimeSummary }) => {
   const entry = useEntry(anime);
-  const { save, update } = useLibraryActions();
   const active = entry?.notify === true;
 
   const toggle = async () => {
@@ -50,9 +49,9 @@ const BellButton = ({ anime }: { anime: AnimeSummary }) => {
       return;
     }
     if (entry === undefined) {
-      save(anime, { status: "planned" });
+      library.save(anime, { status: "planned" });
     }
-    update(entryKeyFor(anime), { notify: !active });
+    library.update(entryKeyFor(anime), { notify: !active });
   };
 
   return (
@@ -85,7 +84,7 @@ const AiringFooter = ({ airingAt, now }: { airingAt: number; now: number }) => (
 
 const MyShows = () => {
   const airing = useLibraryAiring();
-  const hideUpcoming = useLibrary((state) => state.settings.calendarHideUpcoming);
+  const hideUpcoming = useSettings().calendarHideUpcoming;
   const now = useNow();
   if (airing.isPending) {
     return <Loading />;
@@ -100,7 +99,7 @@ const MyShows = () => {
       />
     );
   }
-  const items = airing.data.filter((item) => !hideUpcoming || item.entry.anime.status === "airing");
+  const items = (airing.data ?? []).filter((item) => !hideUpcoming || item.entry.anime.status === "airing");
   return (
     <FlatList
       contentContainerStyle={styles.list}
@@ -135,7 +134,7 @@ const MyShows = () => {
 };
 
 const DaySchedule = ({ day }: { day: number }) => {
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const schedule = useSchedule(source, day);
   const now = useNow();
   const rows = useMemo(
@@ -190,8 +189,6 @@ const DaySchedule = ({ day }: { day: number }) => {
 const CalendarScreen = () => {
   const openMenu = useSideMenu((state) => state.setOpen);
   const [tab, setTab] = useState<CalendarTab>("mine");
-  const now = useNow();
-  const today = DAYS[new Date(now).getDay()] ?? "monday";
 
   return (
     <View style={styles.screen}>
@@ -201,7 +198,7 @@ const CalendarScreen = () => {
             icon: "today-outline",
             label: "Today",
             onPress: () => {
-              setTab(today);
+              setTab(DAYS[new Date().getDay()] ?? "monday");
             },
           },
         ]}

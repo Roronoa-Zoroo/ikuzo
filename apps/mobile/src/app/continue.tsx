@@ -1,5 +1,5 @@
+import { eq, useLiveQuery } from "@tanstack/react-db";
 import { router } from "expo-router";
-import { useMemo } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
@@ -7,9 +7,9 @@ import { Header } from "@/components/header";
 import { EmptyState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
+import { entriesCollection } from "@/lib/db";
 import { watchNextEpisode } from "@/lib/episodes";
 import { openAnime } from "@/lib/nav";
-import { useLibrary } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -25,14 +25,13 @@ const styles = StyleSheet.create({
 
 /** Shows you are watching, most recently touched first, with a one-tap +1. */
 const ContinueScreen = () => {
-  const entries = useLibrary((state) => state.entries);
-  const watching = useMemo(
-    () =>
-      Object.values(entries)
-        .filter((entry) => entry.status === "watching")
-        .toSorted((a, b) => b.updatedAt - a.updatedAt),
-    [entries]
-  );
+  const { data: watching } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ entry: entriesCollection })
+        .where(({ entry }) => eq(entry.status, "watching"))
+        .orderBy(({ entry }) => entry.updatedAt, "desc"),
+  });
 
   return (
     <View style={styles.screen}>

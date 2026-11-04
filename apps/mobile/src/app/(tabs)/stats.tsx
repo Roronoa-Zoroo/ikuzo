@@ -6,7 +6,7 @@ import { Section } from "@/components/section";
 import { useSideMenu } from "@/components/side-menu";
 import { AppText } from "@/components/text";
 import { formatWatchTime } from "@/lib/format";
-import { useLibrary, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
+import { useEntries, WATCH_STATUS_LABELS, WATCH_STATUSES } from "@/lib/store";
 import type { LibraryEntry, WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
@@ -105,9 +105,9 @@ const Bar = ({ label, value, max, color }: { label: string; value: number; max: 
 );
 
 const StatsScreen = () => {
-  const entries = useLibrary((state) => state.entries);
+  const entries = useEntries();
   const openMenu = useSideMenu((state) => state.setOpen);
-  const stats = useMemo(() => computeStats(Object.values(entries)), [entries]);
+  const stats = useMemo(() => computeStats(entries), [entries]);
   const maxStatus = Math.max(...Object.values(stats.byStatus));
   const maxScore = Math.max(0, ...stats.scores.values());
   const maxGenre = stats.genres[0]?.[1] ?? 0;

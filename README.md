@@ -4,7 +4,7 @@
 
 **行くぞ, "let's go!"** Ikuzo is a free, open-source anime tracker for Android and iOS. It needs no account, has no ads and does no tracking.
 
-It keeps your watch lists, counts down to every next episode, notifies you when one airs and helps you find what to watch next, using data from **AniList**, **MyAnimeList** (through [Jikan](https://jikan.moe)) and **AniDB**.
+It keeps your watch lists, counts down to every next episode, notifies you when one airs and helps you find what to watch next, using data from **AniList**, **MyAnimeList** (its official API, plus [Jikan](https://jikan.moe)) and **AniDB**.
 
 ## Features
 
@@ -36,11 +36,11 @@ Sign-in uses each service's OAuth flow for apps: the implicit grant on AniList a
 | Source | Used for |
 | --- | --- |
 | AniList (default) | Browsing and details, plus exact next-episode times for every show, including MyAnimeList entries matched by ID |
-| MyAnimeList via Jikan | Browsing and details, plus opening and ending songs |
+| MyAnimeList (official API + Jikan) | Browsing and details; Jikan adds characters, reviews and opening and ending songs |
 | AniDB (optional) | Episode titles and air dates |
 | [ARM](https://arm.haglund.dev) | Matching the same show across AniList, MyAnimeList and AniDB |
 
-You choose AniList or MyAnimeList for browsing in the side menu. Everything you track is stored on the device in SQLite.
+You choose AniList or MyAnimeList for browsing in the side menu. Everything you track is stored on the device in SQLite (through TanStack DB) and, if you connect AniList or MyAnimeList, kept in sync with them: the newest change to a show wins, removals wait 10 seconds so they can be undone, and large batches of removals or additions wait for your OK in Settings. Restoring a backup never deletes anything on AniList or MyAnimeList and can be undone.
 
 ### Enabling AniDB
 
@@ -55,9 +55,9 @@ Ikuzo then waits at least 2.5 seconds between AniDB requests and caches each sho
 
 | Path | What it is |
 | --- | --- |
-| `apps/mobile` | Expo SDK 58 app (Expo Router, TanStack Query, zustand) |
+| `apps/mobile` | Expo SDK 58 app (Expo Router, TanStack Query, TanStack DB) |
 | `apps/web` | Astro 7 website |
-| `packages/anime` | `@ikuzo/anime`: typed clients for Jikan, AniList and AniDB that return the same data shapes, plus ID mapping and airing-time maths |
+| `packages/anime` | `@ikuzo/anime`: typed clients for MyAnimeList, Jikan, AniList and AniDB that return the same data shapes, plus ID mapping, airing-time maths and the sync planner (with unit tests) |
 | `packages/typescript-config` | Shared TypeScript config |
 
 ## Development

@@ -2,7 +2,7 @@ import type { AnimeSummary } from "@ikuzo/anime/types";
 import { ActivityIndicator, FlatList, StyleSheet } from "react-native";
 
 import { openAnime } from "@/lib/nav";
-import { animeKey, displayTitle, useLibrary } from "@/lib/store";
+import { animeKey, displayTitle, useSettings } from "@/lib/store";
 import { colors, spacing } from "@/lib/theme";
 
 import { PosterTile } from "./poster-tile";
@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
 
 /** Horizontal row of posters inside a section card (Discover, Recommendations, Related). */
 export const AnimeCarousel = ({ title, items, loading = false, error, onViewAll }: AnimeCarouselProps) => {
-  const language = useLibrary((state) => state.settings.titleLanguage);
+  const language = useSettings().titleLanguage;
   return (
     <Section actionLabel={onViewAll === undefined ? undefined : "View all"} flush onAction={onViewAll} title={title}>
       {loading ? <ActivityIndicator color={colors.accent} style={styles.status} /> : null}

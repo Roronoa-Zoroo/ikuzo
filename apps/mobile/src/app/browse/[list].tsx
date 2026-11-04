@@ -5,7 +5,7 @@ import { StyleSheet, View } from "react-native";
 import { AnimeResults } from "@/components/anime-results";
 import { Header } from "@/components/header";
 import { useBrowse } from "@/lib/queries";
-import { useLibrary } from "@/lib/store";
+import { useSettings } from "@/lib/store";
 import { colors } from "@/lib/theme";
 
 const LISTS: readonly BrowseList[] = ["airing", "popular", "upcoming", "top", "movies"];
@@ -19,7 +19,7 @@ const isBrowseList = (value: unknown): value is BrowseList => LISTS.some((list) 
 const BrowseScreen = () => {
   const params = useLocalSearchParams<{ list: string; title?: string }>();
   const list = isBrowseList(params.list) ? params.list : "popular";
-  const source = useLibrary((state) => state.settings.source);
+  const { source } = useSettings();
   const query = useBrowse(source, list);
 
   return (
