@@ -1,3 +1,5 @@
+<p align="center"><img alt="Ikuzo icon" height="96" src="apps/mobile/assets/brand/ikuzo-icon.svg" width="96" /></p>
+
 # Ikuzo
 
 **行くぞ, "let's go!"** Ikuzo is a free, open-source anime tracker for Android and iOS. It needs no account, has no ads and does no tracking.

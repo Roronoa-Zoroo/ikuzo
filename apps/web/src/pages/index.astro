@@ -4,6 +4,7 @@ import Phone from "../components/phone.astro";
 import Base from "../layouts/base.astro";
 
 const REPOSITORY = "https://github.com/Roronoa-Zoroo/ikuzo";
+const base = import.meta.env.BASE_URL.replace(/\/$/u, "");
 
 const features = [
   { text: "Watching, plan to watch, on hold, completed and dropped, with one-tap +1 episode.", title: "Your lists" },
@@ -51,6 +52,7 @@ const promises = [
 >
   <header class="nav container">
     <a aria-label="Ikuzo home" class="logo" href="#top">
+      <img alt="" height="32" src={`${base}/favicon.svg`} width="32" />
       Ikuzo
     </a>
     <nav aria-label="Sections">
@@ -174,6 +176,9 @@ const promises = [
     flex-wrap: wrap;
   }
   .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     font-weight: 800;
     font-size: 1.4rem;
     text-decoration: none;

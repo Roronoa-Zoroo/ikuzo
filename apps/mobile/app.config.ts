@@ -65,7 +65,9 @@ const config = ({ config: base }: ConfigContext): ExpoConfig =>
         },
       ],
       "expo-web-browser",
-      ["expo-notifications", { color: "#3d8bfd" }],
+      // Status-bar icon: white 行 silhouette, tinted with the brand violet.
+      ["expo-notifications", { color: "#7c3aed", icon: "./assets/notification-icon.png" }],
+      ["expo-splash-screen", { backgroundColor: BACKGROUND, image: "./assets/splash-icon.png", imageWidth: 140 }],
     ],
     scheme: "ikuzo",
     slug: "ikuzo",

@@ -7,7 +7,7 @@ interface Props {
 }
 
 const { title, description } = Astro.props;
-const favicon = `${import.meta.env.BASE_URL.replace(/\/$/u, "")}/favicon.png`;
+const base = import.meta.env.BASE_URL.replace(/\/$/u, "");
 ---
 
 <!doctype html>
@@ -19,7 +19,8 @@ const favicon = `${import.meta.env.BASE_URL.replace(/\/$/u, "")}/favicon.png`;
     <meta content="#0f1626" name="theme-color" />
     <meta content={title} property="og:title" />
     <meta content={description} property="og:description" />
-    <link href={favicon} rel="icon" type="image/png" />
+    <link href={`${base}/favicon.svg`} rel="icon" type="image/svg+xml" />
+    <link href={`${base}/favicon.png`} rel="apple-touch-icon" />
     <title>{title}</title>
   </head>
   <body>
