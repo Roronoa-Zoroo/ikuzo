@@ -2,14 +2,14 @@
 
 pnpm + Turborepo starter: Vite web app, Hono + tRPC API, Better Auth, MongoDB, Redis, Cloudflare R2, and Resend.
 
-| Package | Role |
-| --- | --- |
-| `apps/web` | Vite + TanStack Router client |
-| `apps/api` | Hono + tRPC server |
-| `packages/ui` | Shared shadcn/ui components |
-| `packages/db` | MongoDB + Papr models |
-| `packages/runtime` | Logging, boot, HTTP lifecycle |
-| `packages/email` | React Email templates and a Resend mailer |
+| Package            | Role                                                  |
+| ------------------ | ----------------------------------------------------- |
+| `apps/web`         | Vite + TanStack Router client                         |
+| `apps/api`         | Hono + tRPC server                                    |
+| `packages/ui`      | Shared shadcn/ui components                           |
+| `packages/db`      | MongoDB + Papr models                                 |
+| `packages/runtime` | Logging, boot, HTTP lifecycle                         |
+| `packages/email`   | React Email templates and a Resend mailer             |
 | `packages/storage` | Signed upload/download URLs for S3, R2, or Azure Blob |
 
 Needs **Node 24+**, **pnpm**, **Docker**, and [Portless](https://github.com/vercel-labs/portless) (`pnpm add -g portless`).

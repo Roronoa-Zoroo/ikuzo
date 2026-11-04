@@ -2,7 +2,7 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "pnpm run fix --skip=correctness/noUnusedImports"
+        "command": "pnpm exec ultracite fix --hook"
       }
     ]
   },

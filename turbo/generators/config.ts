@@ -1,6 +1,6 @@
 import type { PlopTypes } from "@turbo/gen";
 
-const PACKAGE_NAME_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+const PACKAGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
 export default function generator(plop: PlopTypes.NodePlopAPI): void {
   plop.setGenerator("node-package", {
