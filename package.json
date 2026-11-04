@@ -1,5 +1,5 @@
 {
-  "name": "starter-template",
+  "name": "ikuzo",
   "private": true,
   "scripts": {
     "build": "turbo run build",
@@ -7,7 +7,6 @@
     "check-types": "turbo run check-types",
     "clean": "turbo run clean",
     "dev": "turbo watch dev",
-    "email:preview": "pnpm --filter @repo/email preview",
     "fix": "ultracite fix",
     "gen": "turbo gen",
     "prepare": "lefthook install"
@@ -24,11 +23,5 @@
   "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=24"
-  },
-  "intent": {
-    "skills": [
-      "@tanstack/*",
-      "@trpc/*"
-    ]
   }
 }
