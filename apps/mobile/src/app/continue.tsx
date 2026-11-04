@@ -13,7 +13,7 @@ import { useLibrary } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
-  list: { flexGrow: 1, gap: spacing.md, paddingVertical: spacing.md },
+  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   plus: {
     backgroundColor: colors.accent,
     borderRadius: radius.sm,

@@ -1,15 +1,16 @@
-import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fontSize, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
+import { MaterialIcon } from "./material-icon";
+import type { IconName } from "./material-icon";
 import { AppText } from "./text";
 import { Touchable } from "./touchable";
 
 export interface HeaderAction {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   label: string;
   onPress: () => void;
 }
@@ -23,6 +24,10 @@ interface HeaderProps {
   transparent?: boolean;
 }
 
+const ICON_SIZE = 26;
+/** Material keyline: titles start 72dp from the left edge. */
+const TITLE_KEYLINE = 72;
+
 const styles = StyleSheet.create({
   actions: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   bar: {
@@ -30,11 +35,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flexDirection: "row",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    minHeight: 56,
+    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   icon: { padding: spacing.sm },
-  title: { color: colors.text, flex: 1, fontSize: fontSize.xl, fontWeight: "700", marginLeft: spacing.sm },
+  title: { color: colors.textStrong, flex: 1, fontSize: 21, fontWeight: "500" },
   transparent: { backgroundColor: "transparent" },
 });
 
@@ -47,7 +53,7 @@ export const IconButton = ({ icon, label, onPress }: HeaderAction) => (
     onPress={onPress}
     style={styles.icon}
   >
-    <Ionicons color={colors.text} name={icon} size={24} />
+    <MaterialIcon color={colors.textStrong} name={icon} size={ICON_SIZE} />
   </Touchable>
 );
 
@@ -58,7 +64,17 @@ export const Header = ({ title, leading, actions = NO_ACTIONS, right, transparen
   return (
     <View style={[styles.bar, { paddingTop: insets.top + spacing.sm }, transparent ? styles.transparent : null]}>
       {leading === undefined ? null : <IconButton {...leading} />}
-      <AppText accessibilityRole="header" numberOfLines={1} style={styles.title}>
+      <AppText
+        accessibilityRole="header"
+        numberOfLines={1}
+        style={[
+          styles.title,
+          {
+            marginLeft:
+              leading === undefined ? spacing.md : TITLE_KEYLINE - ICON_SIZE - spacing.sm * 2 - spacing.xs * 2,
+          },
+        ]}
+      >
         {title}
       </AppText>
       <View style={styles.actions}>

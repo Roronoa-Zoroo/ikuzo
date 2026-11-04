@@ -7,10 +7,10 @@ import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { openAnime } from "@/lib/nav";
 import { animeKey, useLibrary, findEntry } from "@/lib/store";
-import { colors, spacing } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 const styles = StyleSheet.create({
-  list: { flexGrow: 1, gap: spacing.md, paddingVertical: spacing.md },
+  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 

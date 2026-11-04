@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { broadcastInLocalTime, estimateNextEpisode, formatCountdown } from "@ikuzo/anime/airing";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import type { AnimeDetail } from "@ikuzo/anime/types";
@@ -17,18 +17,19 @@ import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useCharacters, useRecommendations } from "@/lib/queries";
-import {
-  animeKey,
-  characterKey,
-  useLibrary,
-  useLibraryActions,
-  WATCH_STATUS_LABELS,
-  useEntry,
-  entryKeyFor,
-  findEntry,
-} from "@/lib/store";
+import { animeKey, characterKey, useLibrary, useLibraryActions, useEntry, entryKeyFor, findEntry } from "@/lib/store";
+import type { WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 import { useNow } from "@/lib/use-now";
+
+/** anYme's compact status words for the stat row. */
+const SHORT_STATUS: Record<WatchStatus, string> = {
+  completed: "Completed",
+  dropped: "Dropped",
+  onHold: "On hold",
+  planned: "Planned",
+  watching: "Watching",
+};
 
 const WEEKDAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"] as const;
 const SYNOPSIS_PREVIEW_LINES = 5;
@@ -36,6 +37,7 @@ const CHARACTER_PREVIEW = 12;
 const CHARACTER_TILE_WIDTH = 110;
 
 const styles = StyleSheet.create({
+  buttonText: { color: colors.textStrong, fontSize: 15, fontWeight: "700", letterSpacing: 1.25 },
   carousel: { gap: spacing.md, paddingHorizontal: spacing.lg },
   center: { alignItems: "center", gap: spacing.sm },
   controls: {
@@ -57,31 +59,36 @@ const styles = StyleSheet.create({
   infoValue: { flex: 1 },
   linkButton: {
     alignItems: "center",
-    borderColor: colors.text,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    backgroundColor: "#0c1220",
+    borderColor: colors.textStrong,
+    borderRadius: 12,
+    borderWidth: 1.5,
     flexDirection: "row",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 6,
   },
+  linkLabel: { color: colors.textStrong, fontSize: 16, fontWeight: "600" },
   links: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, justifyContent: "center", marginTop: spacing.sm },
+  // MaterialButton / AnYmeOutlinedButton: 4dp corners, 13dp vertical padding.
   outlineButton: {
     alignItems: "center",
-    borderColor: colors.accent,
-    borderRadius: radius.sm,
+    borderColor: colors.primary,
+    borderRadius: 4,
     borderWidth: 2,
-    paddingVertical: spacing.md,
+    paddingVertical: 11,
   },
   pad: { paddingHorizontal: spacing.lg },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+    elevation: 2,
+    paddingVertical: 13,
   },
+  statLabel: { color: colors.textStrong, fontSize: 16, fontWeight: "700" },
   statRow: { flexDirection: "row", justifyContent: "space-between" },
-  statTile: { alignItems: "center", flex: 1, gap: spacing.xs },
+  statTile: { alignItems: "center", borderRadius: radius.sm, flex: 1, gap: 2, paddingVertical: spacing.xs },
   tab: { gap: spacing.md, paddingVertical: spacing.md },
 });
 
@@ -92,13 +99,13 @@ const StatTile = ({
   label,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
   label: string;
   onPress?: () => void;
 }) => (
   <Touchable accessibilityRole="button" disabled={onPress === undefined} onPress={onPress} style={styles.statTile}>
-    <Ionicons color={colors.text} name={icon} size={26} />
-    <AppText numberOfLines={1} variant="label">
+    <MaterialCommunityIcons color={colors.textStrong} name={icon} size={30} />
+    <AppText numberOfLines={1} style={styles.statLabel}>
       {label}
     </AppText>
   </Touchable>
@@ -118,18 +125,14 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
     <View style={styles.controls}>
       <View style={styles.statRow}>
         <StatTile
-          icon="film-outline"
-          label={entry === undefined ? "Not in list" : WATCH_STATUS_LABELS[entry.status]}
+          icon="movie-open"
+          label={entry === undefined ? "Not in list" : SHORT_STATUS[entry.status]}
           onPress={openEditor}
         />
-        <StatTile icon="eye-outline" label={`${entry?.progress ?? 0}/${anime.episodes ?? "?"}`} onPress={openEditor} />
+        <StatTile icon="eye" label={`${entry?.progress ?? 0}/${anime.episodes ?? "?"}`} onPress={openEditor} />
+        <StatTile icon="thumb-up" label={String(entry?.score ?? 0)} onPress={openEditor} />
         <StatTile
-          icon="thumbs-up-outline"
-          label={entry === undefined || entry.score === 0 ? "-" : String(entry.score)}
-          onPress={openEditor}
-        />
-        <StatTile
-          icon={bookmarked ? "bookmark" : "bookmark-outline"}
+          icon={bookmarked ? "bookmark-multiple" : "bookmark-multiple-outline"}
           label="Bookmark"
           onPress={() => {
             toggleBookmark(anime);
@@ -138,7 +141,7 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
       </View>
       {entry === undefined ? (
         <Touchable accessibilityRole="button" onPress={openEditor} style={styles.primaryButton}>
-          <AppText variant="label">ADD TO LIST</AppText>
+          <AppText style={styles.buttonText}>ADD TO LIST</AppText>
         </Touchable>
       ) : (
         <>
@@ -150,10 +153,10 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
             }}
             style={styles.primaryButton}
           >
-            <AppText variant="label">+1</AppText>
+            <AppText style={styles.buttonText}>+1</AppText>
           </Touchable>
           <Touchable accessibilityRole="button" onPress={openEditor} style={styles.outlineButton}>
-            <AppText variant="label">UPDATE</AppText>
+            <AppText style={styles.buttonText}>UPDATE</AppText>
           </Touchable>
         </>
       )}
@@ -235,16 +238,18 @@ const InfoRow = ({ label, value }: { label: string; value?: string }) =>
 
 const LinkButton = ({
   icon,
+  iconColor = colors.textStrong,
   label,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
   label: string;
   onPress: () => void;
 }) => (
   <Touchable accessibilityRole="link" onPress={onPress} style={styles.linkButton}>
-    <Ionicons color={colors.text} name={icon} size={20} />
-    <AppText variant="label">{label}</AppText>
+    <Ionicons color={iconColor} name={icon} size={24} />
+    <AppText style={styles.linkLabel}>{label}</AppText>
   </Touchable>
 );
 
@@ -262,22 +267,28 @@ const localBroadcast = (anime: AnimeDetail): string | undefined => {
 const Info = ({ anime }: { anime: AnimeDetail }) => {
   const [expanded, setExpanded] = useState(false);
   return (
-    <Section title="Info">
-      <InfoRow label="Format" value={anime.format} />
-      <InfoRow label="Episodes" value={anime.episodes === null ? "?" : String(anime.episodes)} />
-      <InfoRow
-        label="Duration"
-        value={anime.durationMinutes === undefined ? undefined : `${anime.durationMinutes} min`}
-      />
-      <InfoRow label="Status" value={capitalize(anime.status)} />
-      <InfoRow label="Aired" value={formatDateRange(anime.airedFrom, anime.airedTo, anime.status)} />
-      <InfoRow
-        label="Season"
-        value={anime.season === undefined ? undefined : `${capitalize(anime.season)} ${anime.year ?? ""}`}
-      />
-      <InfoRow label="Broadcast" value={localBroadcast(anime)} />
+    <Section
+      actionLabel={expanded ? "Less Information" : "More Information"}
+      onAction={() => {
+        setExpanded(!expanded);
+      }}
+      title="Info"
+    >
       {expanded ? (
         <>
+          <InfoRow label="Format" value={anime.format} />
+          <InfoRow label="Episodes" value={anime.episodes === null ? "?" : String(anime.episodes)} />
+          <InfoRow
+            label="Duration"
+            value={anime.durationMinutes === undefined ? undefined : `${anime.durationMinutes} min`}
+          />
+          <InfoRow label="Status" value={capitalize(anime.status)} />
+          <InfoRow label="Aired" value={formatDateRange(anime.airedFrom, anime.airedTo, anime.status)} />
+          <InfoRow
+            label="Season"
+            value={anime.season === undefined ? undefined : `${capitalize(anime.season)} ${anime.year ?? ""}`}
+          />
+          <InfoRow label="Broadcast" value={localBroadcast(anime)} />
           <InfoRow label="Studios" value={anime.studios.join(", ")} />
           <InfoRow label="Source" value={anime.sourceMaterial} />
           <InfoRow label="Rating" value={anime.rating} />
@@ -289,19 +300,10 @@ const Info = ({ anime }: { anime: AnimeDetail }) => {
           <InfoRow label="English" value={anime.titleEnglish} />
         </>
       ) : null}
-      <Touchable
-        accessibilityRole="button"
-        onPress={() => {
-          setExpanded(!expanded);
-        }}
-      >
-        <AppText color={colors.accent} variant="label">
-          {expanded ? "Less information" : "More information"}
-        </AppText>
-      </Touchable>
       <View style={styles.links}>
         <LinkButton
           icon="logo-reddit"
+          iconColor="#ff4500"
           label="Discuss"
           onPress={() => {
             void openLink(redditUrl(anime));

@@ -9,19 +9,26 @@ export const fontFamily = Platform.select({ android: "GoogleSans", default: unde
 
 /** Dark navy palette: easy on the eyes for late-night episode tracking. */
 export const colors = {
-  accent: "#3d8bfd",
-  accentMuted: "#1c3a66",
-  background: "#0f1626",
-  border: "#26324a",
-  card: "#18223a",
-  cardPressed: "#202c47",
+  /** theme_NightBlue_accent */
+  accent: "#42a5f5",
+  accentMuted: "#173b5e",
+  /** custom_background */
+  background: "#111a29",
+  border: "#243149",
+  /** card_background */
+  card: "#172233",
+  cardPressed: "#1e2b40",
   danger: "#ef5350",
   overlay: "rgba(5, 9, 18, 0.72)",
+  /** colorPrimary: filled buttons */
+  primary: "#2196f3",
   ripple: "rgba(238, 242, 251, 0.12)",
   success: "#4caf7d",
-  surface: "#131c30",
-  text: "#eef2fb",
+  surface: "#141f31",
+  /** textColor_light_mode (88% white) */
+  text: "rgba(255, 255, 255, 0.88)",
   textMuted: "#9aa6bf",
+  textStrong: "#ffffff",
   textSubtle: "#6c7893",
   warning: "#f5a524",
 } as const;

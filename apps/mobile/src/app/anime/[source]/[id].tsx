@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { AnimeDetail } from "@ikuzo/anime/types";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";
@@ -43,9 +44,12 @@ const TABS: { key: DetailTab; label: string }[] = [
   { key: "songs", label: "Songs" },
 ];
 
-const BANNER_HEIGHT = 240;
-const POSTER_WIDTH = 120;
-const POSTER_HEIGHT = 175;
+/** Sizes measured from anYme's anime screen (activity_anime_info). */
+const BANNER_HEIGHT = 190;
+const POSTER_WIDTH = 96;
+const POSTER_HEIGHT = 135;
+/** How far the poster hangs below the banner's bottom edge. */
+const POSTER_OVERHANG = 30;
 
 /** Toolbar height below the status bar (Android's ?actionBarSize). */
 const BAR_HEIGHT = 56;
@@ -53,9 +57,11 @@ const BAR_HEIGHT = 56;
 const PARALLAX = 0.5;
 
 const styles = StyleSheet.create({
-  banner: { height: BANNER_HEIGHT, left: 0, position: "absolute", right: 0, top: 0 },
+  banner: { left: 0, position: "absolute", right: 0, top: 0 },
   bannerImage: { height: "100%", width: "100%" },
-  bannerShade: { backgroundColor: colors.overlay, bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  // A light wash keeps the art bright; a darker band behind the toolbar keeps its text readable.
+  bannerShade: { backgroundColor: "rgba(0, 0, 0, 0.18)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  bannerTopScrim: { backgroundColor: "rgba(0, 0, 0, 0.32)", left: 0, position: "absolute", right: 0, top: 0 },
   barBackground: {
     backgroundColor: colors.surface,
     bottom: 0,
@@ -65,20 +71,18 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
-  hero: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    gap: spacing.lg,
-    marginTop: BANNER_HEIGHT - POSTER_HEIGHT / 2,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  heroText: { flex: 1, gap: spacing.xs, paddingBottom: spacing.xs },
+  hero: { paddingBottom: spacing.md, paddingHorizontal: 15 },
   optionsButton: { borderRadius: radius.sm, padding: spacing.sm },
-  poster: { backgroundColor: colors.surface, borderRadius: radius.sm, height: POSTER_HEIGHT, width: POSTER_WIDTH },
+  poster: { backgroundColor: colors.surface, borderRadius: 4, height: POSTER_HEIGHT, width: POSTER_WIDTH },
   screen: { backgroundColor: colors.background, flex: 1 },
   tabs: { left: 0, position: "absolute", right: 0, top: 0, zIndex: 2 },
-  title: { color: colors.text, flex: 1, fontFamily, fontSize: fontSize.lg, fontWeight: "700" },
+  title: { color: colors.textStrong, flexShrink: 1, fontFamily, fontSize: fontSize.xl, fontWeight: "700" },
+  titleButton: { alignItems: "center", flex: 1, flexDirection: "row", gap: spacing.xs, paddingVertical: spacing.xs },
+  titleShadow: {
+    textShadowColor: "rgba(0, 0, 0, 0.6)",
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 4,
+  },
   topBar: {
     alignItems: "center",
     flexDirection: "row",
@@ -91,6 +95,13 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
 });
+
+const showSynonyms = (anime: AnimeDetail) => {
+  const names = [anime.title, anime.titleEnglish, anime.titleNative, ...anime.synonyms].filter(
+    (name): name is string => name !== undefined && name !== ""
+  );
+  Alert.alert("Also known as", [...new Set(names)].join("\n"));
+};
 
 const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
   const key = animeKey(anime);
@@ -153,8 +164,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
       icon: "text",
       label: "Show synonyms",
       onPress: () => {
-        const names = [anime.title, anime.titleEnglish, anime.titleNative, ...anime.synonyms].filter(Boolean);
-        Alert.alert("Also known as", [...new Set(names)].join("\n"));
+        showSynonyms(anime);
       },
     },
     {
@@ -186,8 +196,8 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
   });
 
   // Collapse range: the bar becomes solid as the banner disappears under it.
-  const collapseStart = BANNER_HEIGHT - barHeight * 2;
-  const collapseEnd = BANNER_HEIGHT - barHeight;
+  const collapseStart = insets.top + BANNER_HEIGHT - barHeight * 2;
+  const collapseEnd = insets.top + BANNER_HEIGHT - barHeight;
 
   const bannerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, collapseEnd], [1, 0.3], Extrapolation.CLAMP),
@@ -207,7 +217,7 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
 
   return (
     <View style={styles.screen}>
-      <Animated.View pointerEvents="none" style={[styles.banner, bannerStyle]}>
+      <Animated.View pointerEvents="none" style={[styles.banner, { height: insets.top + BANNER_HEIGHT }, bannerStyle]}>
         <Image
           blurRadius={anime.banner === undefined ? 12 : 0}
           contentFit="cover"
@@ -216,6 +226,7 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
           transition={duration.image}
         />
         <View style={styles.bannerShade} />
+        <View style={[styles.bannerTopScrim, { height: barHeight }]} />
       </Animated.View>
 
       <View style={[styles.topBar, { height: barHeight, paddingTop: insets.top }]}>
@@ -227,9 +238,20 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
             router.back();
           }}
         />
-        <Animated.Text numberOfLines={1} style={[styles.title, barStyle]}>
-          {title}
-        </Animated.Text>
+        {/* Title always in the toolbar, like anYme; the ▼ lists the other titles. */}
+        <Touchable
+          accessibilityHint="Shows the other titles of this anime"
+          accessibilityRole="button"
+          onPress={() => {
+            showSynonyms(anime);
+          }}
+          style={styles.titleButton}
+        >
+          <AppText numberOfLines={1} style={[styles.title, styles.titleShadow]}>
+            {title}
+          </AppText>
+          <MaterialCommunityIcons color={colors.textStrong} name="menu-down" size={26} style={styles.titleShadow} />
+        </Touchable>
         <Touchable
           accessibilityRole="button"
           hitSlop={8}
@@ -238,7 +260,9 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
           }}
           style={styles.optionsButton}
         >
-          <AppText variant="label">OPTIONS</AppText>
+          <AppText style={styles.titleShadow} variant="label">
+            OPTIONS
+          </AppText>
         </Touchable>
       </View>
 
@@ -257,19 +281,9 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
             const { y, height } = event.nativeEvent.layout;
             setTabsTop(y + height);
           }}
-          style={styles.hero}
+          style={[styles.hero, { marginTop: insets.top + BANNER_HEIGHT - (POSTER_HEIGHT - POSTER_OVERHANG) }]}
         >
           <Image contentFit="cover" source={anime.image} style={styles.poster} transition={duration.image} />
-          <View style={styles.heroText}>
-            <AppText numberOfLines={3} variant="heading">
-              {title}
-            </AppText>
-            <AppText variant="caption">
-              {[anime.format, anime.year, anime.score === undefined ? undefined : `★ ${anime.score.toFixed(2)}`]
-                .filter(Boolean)
-                .join(" · ")}
-            </AppText>
-          </View>
         </View>
         {/* Room for the floating tab strip. */}
         <View style={{ height: tabsHeight }} />

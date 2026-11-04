@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
 
@@ -6,35 +6,31 @@ import { SideMenu } from "@/components/side-menu";
 import { duration } from "@/lib/motion";
 import { colors, fontFamily } from "@/lib/theme";
 
-type IconName = keyof typeof Ionicons.glyphMap;
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 interface TabIconProps {
   color: ColorValue;
-  focused: boolean;
   size: number;
-  active: IconName;
-  idle: IconName;
+  name: IconName;
 }
 
-const TabIcon = ({ color, focused, size, active, idle }: TabIconProps) => (
-  <Ionicons color={typeof color === "string" ? color : colors.textSubtle} name={focused ? active : idle} size={size} />
+const TabIcon = ({ color, size, name }: TabIconProps) => (
+  <MaterialCommunityIcons color={typeof color === "string" ? color : colors.textSubtle} name={name} size={size + 2} />
 );
 
-/** One named icon component per tab, created once at module load. */
-const makeTabIcon = (active: IconName, idle: IconName) => {
-  const Icon = ({ color, focused, size }: Omit<TabIconProps, "active" | "idle">) => (
-    <TabIcon active={active} color={color} focused={focused} idle={idle} size={size} />
-  );
-  Icon.displayName = `TabIcon(${active})`;
+/** One named icon component per tab; like anYme's bottom bar only the colour changes when selected. */
+const makeTabIcon = (name: IconName) => {
+  const Icon = ({ color, size }: Omit<TabIconProps, "name">) => <TabIcon color={color} name={name} size={size} />;
+  Icon.displayName = `TabIcon(${name})`;
   return Icon;
 };
 
 const TABS = [
-  { icon: makeTabIcon("home", "home-outline"), name: "index", title: "Home" },
-  { icon: makeTabIcon("bookmarks", "bookmarks-outline"), name: "bookmarks", title: "Bookmarks" },
-  { icon: makeTabIcon("compass", "compass-outline"), name: "discover", title: "Discover" },
-  { icon: makeTabIcon("calendar", "calendar-outline"), name: "calendar", title: "Calendar" },
-  { icon: makeTabIcon("stats-chart", "stats-chart-outline"), name: "stats", title: "Stats" },
+  { icon: makeTabIcon("home"), name: "index", title: "Home" },
+  { icon: makeTabIcon("bookmark-multiple-outline"), name: "bookmarks", title: "Bookmarks" },
+  { icon: makeTabIcon("compass"), name: "discover", title: "Discover" },
+  { icon: makeTabIcon("calendar-month-outline"), name: "calendar", title: "Calendar" },
+  { icon: makeTabIcon("chart-box"), name: "stats", title: "Stats" },
 ] as const;
 
 const TabsLayout = () => (
@@ -47,8 +43,9 @@ const TabsLayout = () => (
         sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textSubtle,
-        tabBarLabelStyle: { fontFamily, fontWeight: "500" },
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarLabelStyle: { fontFamily, fontSize: 13, fontWeight: "500" },
+        // Same colour as the page and no divider, like AHBottomNavigation in anYme.
+        tabBarStyle: { backgroundColor: colors.background, borderTopWidth: 0, elevation: 8, height: 64, paddingTop: 6 },
         transitionSpec: { animation: "timing", config: { duration: duration.crossfade } },
       }}
     >

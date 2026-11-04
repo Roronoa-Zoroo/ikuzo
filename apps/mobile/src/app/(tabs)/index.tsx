@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  list: { flexGrow: 1, gap: spacing.md, paddingVertical: spacing.md },
+  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
   sheetTitle: { paddingBottom: spacing.md, paddingHorizontal: spacing.xl },
 });

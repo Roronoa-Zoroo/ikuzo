@@ -15,7 +15,7 @@ interface SectionProps {
 }
 
 const styles = StyleSheet.create({
-  action: { textDecorationLine: "underline" },
+  action: { color: colors.textStrong, fontWeight: "600", textDecorationLine: "underline" },
   body: { paddingHorizontal: spacing.lg },
   card: {
     backgroundColor: colors.card,
@@ -30,6 +30,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
   },
+  title: { fontSize: 23, fontWeight: "500" },
 });
 
 /** Rounded card with a heading and optional underlined action ("View all"). */
@@ -37,7 +38,9 @@ export const Section = ({ title, actionLabel, onAction, children, flush = false 
   <View style={styles.card}>
     {title === undefined ? null : (
       <View style={styles.header}>
-        <AppText variant="heading">{title}</AppText>
+        <AppText style={styles.title} variant="heading">
+          {title}
+        </AppText>
         {actionLabel === undefined || onAction === undefined ? null : (
           <Touchable accessibilityRole="link" hitSlop={8} onPress={onAction}>
             <AppText style={styles.action} variant="label">

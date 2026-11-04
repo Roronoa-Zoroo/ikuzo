@@ -11,10 +11,10 @@ export const formatDateRange = (from?: string, to?: string, status?: AiringStatu
   if (from === undefined) {
     return undefined;
   }
-  if (to !== undefined && to !== from) {
+  if (to !== undefined) {
     return `${from} - ${to}`;
   }
-  return status === "finished" ? from : `${from} - ???`;
+  return status === "finished" ? `${from} - ${from}` : `${from} - ???`;
 };
 
 export const formatAirTime = (epochMs: number): string =>

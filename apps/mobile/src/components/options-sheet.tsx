@@ -1,16 +1,17 @@
-import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, spacing } from "@/lib/theme";
 
+import { MaterialIcon } from "./material-icon";
+import type { IconName } from "./material-icon";
 import { SlidePanel } from "./slide-panel";
 import { AppText } from "./text";
 import { Touchable } from "./touchable";
 
 export interface OptionItem {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   label: string;
   /** Second line under the label */
   detail?: string;
@@ -65,7 +66,7 @@ export const OptionsSheet = ({ visible, onClose, items, side = "right", header }
                 }}
                 style={styles.item}
               >
-                <Ionicons color={TONES[item.tone ?? "default"]} name={item.icon} size={24} style={styles.icon} />
+                <MaterialIcon color={TONES[item.tone ?? "default"]} name={item.icon} size={24} style={styles.icon} />
                 <View style={styles.text}>
                   <AppText color={TONES[item.tone ?? "default"]} variant="label">
                     {item.label}

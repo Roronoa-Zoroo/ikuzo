@@ -32,7 +32,7 @@ const CALENDAR_TABS: { key: CalendarTab; label: string }[] = [
 
 const styles = StyleSheet.create({
   footer: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "space-between" },
-  list: { flexGrow: 1, gap: spacing.md, paddingVertical: spacing.md },
+  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 
@@ -125,6 +125,7 @@ const MyShows = () => {
             openAnime(item.entry.anime);
           }}
           showStatus={false}
+          titleLines={2}
           posterLabel={`EP${item.episode}`}
           trailing={<BellButton anime={item.entry.anime} />}
         />
@@ -177,6 +178,7 @@ const DaySchedule = ({ day }: { day: number }) => {
             openAnime(item.anime);
           }}
           showStatus={false}
+          titleLines={2}
           posterLabel={item.next === undefined ? undefined : `EP${item.next.episode}`}
           trailing={<BellButton anime={item.anime} />}
         />

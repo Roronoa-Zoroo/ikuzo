@@ -33,7 +33,6 @@ interface TabFrame {
 }
 
 const INDICATOR_HEIGHT = 3;
-const SCROLL_MARGIN = 48;
 
 const styles = StyleSheet.create({
   indicator: {
@@ -54,6 +53,7 @@ const styles = StyleSheet.create({
 export const TabStrip = <T extends string>({ tabs, value, onChange, position }: TabStripProps<T>) => {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const [frames, setFrames] = useState<TabFrame[]>([]);
+  const [viewport, setViewport] = useState(0);
   const index = Math.max(
     0,
     tabs.findIndex((tab) => tab.key === value)
@@ -68,9 +68,10 @@ export const TabStrip = <T extends string>({ tabs, value, onChange, position }: 
     }
     const frame = frames[index];
     if (frame !== undefined) {
-      scrollRef.current?.scrollTo({ animated: true, x: Math.max(0, frame.x - SCROLL_MARGIN) });
+      // Centre the selected tab, like Material's scrollable TabLayout.
+      scrollRef.current?.scrollTo({ animated: true, x: Math.max(0, frame.x + frame.width / 2 - viewport / 2) });
     }
-  }, [frames, index, internal, position]);
+  }, [frames, index, internal, position, viewport]);
 
   useEffect(() => {
     xs.set(frames.map((frame) => frame.x));
@@ -108,7 +109,15 @@ export const TabStrip = <T extends string>({ tabs, value, onChange, position }: 
 
   return (
     <View style={styles.wrapper}>
-      <ScrollView contentContainerStyle={styles.row} horizontal ref={scrollRef} showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.row}
+        horizontal
+        onLayout={(event) => {
+          setViewport(event.nativeEvent.layout.width);
+        }}
+        ref={scrollRef}
+        showsHorizontalScrollIndicator={false}
+      >
         {tabs.map((tab, tabIndex) => {
           const active = tabIndex === index;
           return (

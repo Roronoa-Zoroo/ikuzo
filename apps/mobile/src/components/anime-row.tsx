@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
@@ -28,22 +28,28 @@ interface AnimeRowProps {
   trailing?: ReactNode;
   /** Hide the AIRING / NYA badge where every row has the same status (Calendar). */
   showStatus?: boolean;
+  /** anYme lists use one line; the calendar allows two. */
+  titleLines?: number;
 }
 
-const POSTER_WIDTH = 96;
-const POSTER_HEIGHT = 120;
+const POSTER_WIDTH = 90;
+const POSTER_HEIGHT = 110;
 
 const styles = StyleSheet.create({
-  body: { flex: 1, gap: spacing.sm, justifyContent: "space-between", padding: spacing.md },
+  // Measured from anYme's cardview_anime_main layout.
+  body: { flex: 1, paddingBottom: 6, paddingLeft: 10, paddingRight: 4, paddingTop: 6 },
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: 10,
+    elevation: 5,
     flexDirection: "row",
-    marginHorizontal: spacing.md,
+    marginHorizontal: 8,
     overflow: "hidden",
   },
+  date: { color: colors.text, fontSize: 13, fontWeight: "700", marginTop: 1 },
   footer: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
-  more: { borderRadius: radius.pill, padding: 2 },
+  footerText: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  more: { borderRadius: radius.pill, marginRight: -4, marginTop: -2, padding: 2 },
   poster: { backgroundColor: colors.surface, height: POSTER_HEIGHT, width: POSTER_WIDTH },
   posterLabel: {
     backgroundColor: colors.overlay,
@@ -55,8 +61,11 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   posterLabelText: { fontSize: fontSize.sm, fontWeight: "700" },
-  titleBlock: { flex: 1, gap: 2 },
-  titleRow: { flexDirection: "row", gap: spacing.sm },
+  progress: { marginTop: 6 },
+  spacer: { flex: 1, minHeight: spacing.sm },
+  title: { color: colors.textStrong, fontSize: 17, fontWeight: "700" },
+  titleBlock: { flex: 1 },
+  titleRow: { flexDirection: "row", gap: spacing.xs },
 });
 
 /** The list card used by Home, Bookmarks, Calendar and search results. */
@@ -69,6 +78,7 @@ export const AnimeRow = ({
   posterLabel,
   trailing,
   showStatus = true,
+  titleLines = 1,
 }: AnimeRowProps) => {
   const language = useLibrary((state) => state.settings.titleLanguage);
   const total = anime.episodes;
@@ -90,10 +100,14 @@ export const AnimeRow = ({
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <View style={styles.titleBlock}>
-              <AppText numberOfLines={2} variant="label">
+              <AppText numberOfLines={titleLines} style={styles.title}>
                 {displayTitle(anime, language)}
               </AppText>
-              {dates === undefined ? null : <AppText variant="caption">{dates}</AppText>}
+              {dates === undefined ? null : (
+                <AppText numberOfLines={1} style={styles.date}>
+                  {dates}
+                </AppText>
+              )}
             </View>
             {onMore === undefined ? null : (
               <Touchable
@@ -104,14 +118,15 @@ export const AnimeRow = ({
                 onPress={onMore}
                 style={styles.more}
               >
-                <Ionicons color={colors.textMuted} name="ellipsis-vertical" size={20} />
+                <MaterialCommunityIcons color={colors.text} name="dots-vertical" size={22} />
               </Touchable>
             )}
             {trailing}
           </View>
+          <View style={styles.spacer} />
           <View style={styles.footer}>
             {footer ?? (
-              <AppText variant="caption">
+              <AppText style={styles.footerText}>
                 {progress === undefined
                   ? [anime.format, total === null ? undefined : `${total} eps`, anime.score?.toFixed(1)]
                       .filter(Boolean)
@@ -121,7 +136,11 @@ export const AnimeRow = ({
             )}
             {showStatus ? <StatusBadge status={anime.status} /> : null}
           </View>
-          {progress === undefined ? null : <ProgressBar ratio={ratio} />}
+          {progress === undefined ? null : (
+            <View style={styles.progress}>
+              <ProgressBar ratio={ratio} />
+            </View>
+          )}
         </View>
       </Touchable>
     </Animated.View>
