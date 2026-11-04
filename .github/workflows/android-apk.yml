@@ -53,10 +53,10 @@ jobs:
           CI: "1"
 
       # Release build signed with the debug key: fine for testing, not for the Play Store.
-      # arm64-v8a only covers practically every phone from the last 7+ years and halves build time.
+      # arm64-v8a runs on practically every phone; x86_64 lets the emulator smoke test run it.
       - name: Build APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,x86_64
 
       - name: Name the APK
         run: |
@@ -68,6 +68,50 @@ jobs:
           name: ikuzo-apk
           path: apps/mobile/dist/*.apk
 
+  # Installs the APK on an emulator, opens it and fails if the app does not stay running.
+  # The logcat and a screenshot are kept either way, so crashes can be read from the run.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ikuzo-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash .github/scripts/android-smoke.sh apk io.github.roronoazoroo.ikuzo smoke
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test
+          path: smoke/
+
+  release:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ikuzo-apk
+          path: dist
+
       - name: Publish pre-release
         uses: softprops/action-gh-release@v2
         with:
@@ -75,9 +119,9 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Ikuzo test build ${{ github.run_number }}
           prerelease: true
-          files: apps/mobile/dist/*.apk
+          files: dist/*.apk
           body: |
-            Test build from `${{ github.ref_name }}` (${{ github.sha }}).
+            Test build from `${{ github.ref_name }}` (${{ github.sha }}). It passed an emulator launch test.
 
             **Install:** download `ikuzo-${{ github.run_number }}.apk` on your Android phone, open it and allow
             installing from your browser when asked. Updates install over the previous build.

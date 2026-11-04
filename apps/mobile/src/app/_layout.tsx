@@ -11,6 +11,9 @@ import { useLibrary } from "@/lib/store";
 import { flush, pullQuietly, startSyncWatcher, whenHydrated } from "@/lib/sync";
 import { colors } from "@/lib/theme";
 
+/** Shows the error and a retry button instead of closing the app when a screen throws. */
+export { ErrorBoundary } from "expo-router";
+
 /** Keeps scheduled episode notifications in sync with the library. */
 const ReminderSync = () => {
   const airing = useLibraryAiring();
