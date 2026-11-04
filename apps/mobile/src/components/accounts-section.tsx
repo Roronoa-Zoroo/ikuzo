@@ -102,35 +102,72 @@ const report = async (label: string, run: () => Promise<PullSummary>) => {
   }
 };
 
+const UNDO_HINT =
+  "This phone's list is kept for a day: to get it back, disconnect your accounts and use Undo in Settings → Backup.";
+
+/** Upload the phone's list, or use the account's? Nothing syncs until one is chosen. */
+const askListChoice = (tracker: TrackerId, counts?: { localShows: number; accountShows: number; toUpload: number }) => {
+  const label = TRACKER_LABELS[tracker];
+  const intro =
+    counts === undefined
+      ? `This phone has its own list and ${label} has another.`
+      : `This phone has ${plural(counts.localShows, "show")} and your ${label} list has ${plural(counts.accountShows, "show")}.`;
+  const upload = counts === undefined ? "the shows" : `the ${plural(counts.toUpload, "show")}`;
+  Alert.alert(
+    `${label} connected`,
+    `${intro}\n\n"Upload" adds ${upload} ${label} does not have yet; everything already on ${label} stays as it is there.\n\n"Use ${label}'s list" replaces this phone's list. ${UNDO_HINT}`,
+    [
+      {
+        onPress: () => {
+          void report(label, replaceWithAccountList);
+        },
+        style: "destructive",
+        text: `Use ${label}'s list`,
+      },
+      {
+        onPress: () => {
+          void report(label, uploadLocalList);
+        },
+        text: "Upload",
+      },
+    ],
+    { cancelable: false }
+  );
+};
+
+/** Shown until the user picks what happens to the phone's list (also after a restart). */
+const PendingChoice = () => {
+  const tracker = useAccounts((state) => state.awaitingChoice);
+  if (tracker === undefined) {
+    return null;
+  }
+  return (
+    <>
+      <View style={styles.divider} />
+      <AppText variant="label">Choose your list</AppText>
+      <AppText variant="caption">
+        {`Nothing syncs with ${TRACKER_LABELS[tracker]} until you choose what happens to the list on this phone.`}
+      </AppText>
+      <Button
+        label="Choose"
+        onPress={() => {
+          askListChoice(tracker);
+        }}
+        primary
+      />
+    </>
+  );
+};
+
 /** Asks what happens next after connecting; every choice is explicit. */
 const afterConnect = (tracker: TrackerId, result: ConnectResult) => {
   const label = TRACKER_LABELS[tracker];
   if (result.kind === "synced") {
     Alert.alert(`${label} connected`, describeSummary(result.summary, label));
   } else if (result.kind === "choose") {
-    Alert.alert(
-      `${label} connected`,
-      `Ikuzo now shows your ${label} list (${plural(result.accountShows, "show")}). This phone already has ${plural(
-        result.localShows,
-        "show"
-      )}.\n\n"Upload" adds the ${plural(result.toUpload, "show")} ${label} does not have yet and keeps everything on ${label} as it is.\n\n"Use ${label}'s list" replaces this phone's list (you can undo that for a day in Settings → Backup).`,
-      [
-        {
-          onPress: () => {
-            void report(label, replaceWithAccountList);
-          },
-          style: "destructive",
-          text: `Use ${label}'s list`,
-        },
-        {
-          onPress: () => {
-            void report(label, uploadLocalList);
-          },
-          text: "Upload",
-        },
-      ],
-      { cancelable: false }
-    );
+    askListChoice(tracker, result);
+  } else if (result.kind === "reconnected") {
+    Alert.alert(`${label} reconnected`, "Waiting changes are being sent.");
   } else if (result.kind === "copy") {
     const main = mainTracker();
     const mainLabel = main === undefined ? "your main account" : TRACKER_LABELS[main];
@@ -215,7 +252,7 @@ const HeldDeletes = () => {
       <View style={styles.divider} />
       <AppText variant="label">Waiting for your OK</AppText>
       <AppText variant="caption">
-        {`${plural(held.keys.length, "show")} in Ikuzo are no longer on your ${label} list. Remove them from Ikuzo too? (You can undo it for a day.)`}
+        {`${plural(held.keys.length, "show")} in Ikuzo are no longer on your ${label} list. Remove them from Ikuzo too? (Your notes stay.)`}
       </AppText>
       <View style={styles.row}>
         <Button
@@ -254,7 +291,7 @@ const AccountRow = ({ tracker }: { tracker: TrackerId }) => {
   const onMakeMain = () => {
     Alert.alert(
       `Show your ${label} list?`,
-      `Ikuzo will show and edit your ${label} list; the other account keeps receiving a copy of changes. The list on this phone is replaced by ${label}'s (you can undo it for a day).`,
+      `Ikuzo will show and edit your ${label} list; the other account keeps receiving a copy of changes. The list on this phone is replaced by ${label}'s. ${UNDO_HINT}`,
       [
         { style: "cancel", text: "Cancel" },
         {
@@ -391,6 +428,7 @@ export const AccountsSection = () => (
       {TRACKERS.map((tracker) => (
         <AccountRow key={tracker} tracker={tracker} />
       ))}
+      <PendingChoice />
       <SyncStatus />
       <HeldRemovals />
       <HeldDeletes />

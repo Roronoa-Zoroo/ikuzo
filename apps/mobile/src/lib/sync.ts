@@ -306,8 +306,9 @@ const queueRestore = (entry: LibraryEntry): void => {
 /** Turns a change made in Ikuzo into queued ops for the main account and the copy account. */
 const queueChange = (change: LibraryChange): void => {
   const main = mainTracker();
-  if (main === undefined) {
-    // No accounts: the list lives on the phone only.
+  if (main === undefined || useAccounts.getState().awaitingChoice !== undefined) {
+    // No accounts (the list lives on the phone only), or the user has not chosen yet what happens
+    // to the phone's list: changes stay local, and the choice decides what reaches the account.
     return;
   }
   if (change.kind === "restore") {
@@ -400,7 +401,7 @@ const pendingChanges = (tracker: TrackerId, since: number): PendingChange[] => [
 
 const pullOnce = async ({ allowBulkRemoval = false } = {}): Promise<PullSummary> => {
   const tracker = mainTracker();
-  if (tracker === undefined) {
+  if (tracker === undefined || useAccounts.getState().awaitingChoice !== undefined) {
     return EMPTY_SUMMARY;
   }
   const { setHeldDeletes, setStatus } = useAccounts.getState();
@@ -517,7 +518,9 @@ export type ConnectResult =
   /** First account, but the phone has its own list: upload it or replace it with the account's? */
   | { kind: "choose"; localShows: number; accountShows: number; toUpload: number }
   /** A second account: it only receives a copy of changes. Copy the whole list to it now? */
-  | { kind: "copy"; shows: number };
+  | { kind: "copy"; shows: number }
+  /** An account that was already connected signed in again. */
+  | { kind: "reconnected" };
 
 /**
  * Signs in. The first account becomes the main one; what happens to a list already on the phone
@@ -542,16 +545,21 @@ export const connect = async (tracker: TrackerId): Promise<ConnectResult> => {
     setQueue((queue) => queue.filter((op) => op.tracker !== tracker));
   }
   const hadMain = mainTracker();
+  const local = getEntries();
+  const becomesMain = hadMain === undefined || hadMain === tracker;
+  const mustChoose = becomesMain && local.length > 0 && previous?.id !== profile.id;
+  // Before the account counts as connected, so no sync can touch the phone's list before the choice.
+  useAccounts.getState().setAwaitingChoice(mustChoose ? tracker : undefined);
   setProfile(tracker, profile);
   setNeedsSignIn(tracker, false);
   setStatus({ lastError: undefined });
 
-  if (hadMain !== undefined && hadMain !== tracker) {
-    return { kind: "copy", shows: getEntries().length };
+  if (!becomesMain) {
+    void flush();
+    return previous === undefined ? { kind: "copy", shows: local.length } : { kind: "reconnected" };
   }
   setMain(tracker);
-  const local = getEntries();
-  if (local.length === 0 || previous?.id === profile.id) {
+  if (!mustChoose) {
     return { kind: "synced", summary: await pull() };
   }
   const list = await downloadList(tracker);
@@ -565,6 +573,7 @@ export const connect = async (tracker: TrackerId): Promise<ConnectResult> => {
 
 /** Adds the phone's shows that the main account does not have to it, then shows the account's list. */
 export const uploadLocalList = async (): Promise<PullSummary> => {
+  useAccounts.getState().setAwaitingChoice(undefined);
   const tracker = mainTracker();
   if (tracker === undefined) {
     return EMPTY_SUMMARY;
@@ -581,6 +590,7 @@ export const uploadLocalList = async (): Promise<PullSummary> => {
 
 /** Replaces the phone's list with the main account's list (the old one can be restored for a day). */
 export const replaceWithAccountList = async (): Promise<PullSummary> => {
+  useAccounts.getState().setAwaitingChoice(undefined);
   await saveUndoSnapshot();
   return await pull({ allowBulkRemoval: true });
 };
@@ -614,7 +624,11 @@ export const pendingFor = (tracker: TrackerId): number =>
 export const disconnect = async (tracker: TrackerId): Promise<void> => {
   const wasMain = mainTracker() === tracker;
   await clearSession(tracker);
-  const { setHeldDeletes, setMain, setNeedsSignIn, setProfile, setQueue } = useAccounts.getState();
+  const { awaitingChoice, setAwaitingChoice, setHeldDeletes, setMain, setNeedsSignIn, setProfile, setQueue } =
+    useAccounts.getState();
+  if (awaitingChoice === tracker) {
+    setAwaitingChoice(undefined);
+  }
   setProfile(tracker, undefined);
   setNeedsSignIn(tracker, false);
   setQueue((queue) => queue.filter((op) => op.tracker !== tracker));
@@ -624,7 +638,10 @@ export const disconnect = async (tracker: TrackerId): Promise<void> => {
     const [next] = connectedTrackers();
     setMain(next);
     if (next !== undefined) {
-      await replaceWithAccountList();
+      // The copy account may hold only part of the list: removals it implies wait for the
+      // user's OK as usual instead of replacing the list outright. (No new undo snapshot: that
+      // would overwrite the one kept from before an earlier list replacement.)
+      await pullQuietly();
     }
   }
 };

@@ -24,6 +24,11 @@ interface AccountsState {
    * stay in Ikuzo until the user confirms (an account switch or an API hiccup must not empty the list).
    */
   heldDeletes?: { tracker: TrackerId; keys: string[] };
+  /**
+   * The first account was connected while the phone had its own list, and the user has not yet
+   * chosen between uploading it and using the account's list. Nothing syncs until they do.
+   */
+  awaitingChoice?: TrackerId;
 }
 
 interface AccountsActions {
@@ -34,6 +39,7 @@ interface AccountsActions {
   setNeedsSignIn: (tracker: TrackerId, needed: boolean) => void;
   setMain: (tracker: TrackerId | undefined) => void;
   setHeldDeletes: (held: AccountsState["heldDeletes"]) => void;
+  setAwaitingChoice: (tracker: TrackerId | undefined) => void;
 }
 
 export const useAccounts = create<AccountsState & AccountsActions>()(
@@ -45,6 +51,9 @@ export const useAccounts = create<AccountsState & AccountsActions>()(
       needsSignIn: [],
       profiles: {},
       queue: [],
+      setAwaitingChoice: (awaitingChoice) => {
+        set({ awaitingChoice });
+      },
       setHeldDeletes: (heldDeletes) => {
         set({ heldDeletes });
       },
@@ -84,7 +93,8 @@ export const useAccounts = create<AccountsState & AccountsActions>()(
         return { ...current, ...saved, queue, syncing: false };
       },
       name: "ikuzo-accounts",
-      partialize: ({ heldDeletes, lastError, lastSyncAt, main, needsSignIn, profiles, queue }) => ({
+      partialize: ({ awaitingChoice, heldDeletes, lastError, lastSyncAt, main, needsSignIn, profiles, queue }) => ({
+        awaitingChoice,
         heldDeletes,
         lastError,
         lastSyncAt,
