@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        {
+          "mode": "dependencyOutputs",
+          "globs": ["dist/**"],
+          "from": ["api#build"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "Starter",
+  "short_name": "Starter",
+  "description": "A pnpm and Turborepo starter with Vite, TanStack Router, Hono, tRPC, Better Auth, MongoDB, and Redis.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f1e8",
+  "theme_color": "#c45c26",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

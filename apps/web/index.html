@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Starter</title>
+    <meta
+      content="A pnpm and Turborepo starter with Vite, TanStack Router, Hono, tRPC, Better Auth, MongoDB, and Redis."
+      name="description"
+    >
+    <meta content="Starter" name="application-name">
+    <meta content="Starter" name="apple-mobile-web-app-title">
+    <meta content="yes" name="apple-mobile-web-app-capable">
+    <meta content="default" name="apple-mobile-web-app-status-bar-style">
+    <meta content="#f7f1e8" media="(prefers-color-scheme: light)" name="theme-color">
+    <meta content="#2a2118" media="(prefers-color-scheme: dark)" name="theme-color">
+    <meta content="website" property="og:type">
+    <meta content="Starter" property="og:site_name">
+    <meta content="Starter" property="og:title">
+    <meta
+      content="A pnpm and Turborepo starter with Vite, TanStack Router, Hono, tRPC, Better Auth, MongoDB, and Redis."
+      property="og:description"
+    >
+    <meta content="%VITE_APP_URL%/og-image.png" property="og:image">
+    <meta content="1200" property="og:image:width">
+    <meta content="630" property="og:image:height">
+    <meta content="Starter — A production-ready TypeScript monorepo starter" property="og:image:alt">
+    <meta content="%VITE_APP_URL%/" property="og:url">
+    <meta content="en_US" property="og:locale">
+    <meta content="summary_large_image" name="twitter:card">
+    <meta content="Starter" name="twitter:title">
+    <meta
+      content="A pnpm and Turborepo starter with Vite, TanStack Router, Hono, tRPC, Better Auth, MongoDB, and Redis."
+      name="twitter:description"
+    >
+    <meta content="%VITE_APP_URL%/og-image.png" name="twitter:image">
+    <link href="/favicon.svg?v=2" rel="icon" type="image/svg+xml">
+    <link href="/favicon-32x32.png?v=2" rel="icon" sizes="32x32" type="image/png">
+    <link href="/apple-touch-icon.png" rel="apple-touch-icon">
+    <link href="/site.webmanifest" rel="manifest">
+    <link href="%VITE_APP_URL%/" rel="canonical">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Starter",
+        "applicationCategory": "DeveloperApplication",
+        "description": "A pnpm and Turborepo starter with Vite, TanStack Router, Hono, tRPC, Better Auth, MongoDB, and Redis.",
+        "operatingSystem": "Web",
+        "url": "%VITE_APP_URL%/",
+        "image": "%VITE_APP_URL%/og-image.png"
+      }
+    </script>
+    <script>
+    "use strict";
+    try {
+      const theme = localStorage.getItem("starter-theme") || "system";
+      const isDark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      const resolved = isDark ? "dark" : "light";
+      document.documentElement.classList.add(resolved);
+      document.documentElement.style.colorScheme = resolved;
+    } catch {
+      /* Ignore missing localStorage (private mode). */
+    }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/src/main.tsx" type="module"></script>
+  </body>
+</html>

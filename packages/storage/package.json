@@ -1,0 +1,32 @@
+{
+  "name": "@repo/storage",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/storage.ts",
+      "default": "./dist/storage.js"
+    },
+    "./utils": {
+      "types": "./src/storage-utils.ts",
+      "default": "./dist/storage-utils.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check-types": "tsc --noEmit",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/s3-request-presigner": "^3.1131.0",
+    "@azure/core-auth": "^1.11.0",
+    "@azure/storage-blob": "^12.33.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^26.5.0",
+    "typescript": "^7.0.2"
+  }
+}
