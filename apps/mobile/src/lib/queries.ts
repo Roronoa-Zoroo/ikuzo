@@ -1,18 +1,36 @@
 import { estimateNextEpisode } from "@ikuzo/anime/airing";
 import { HttpError } from "@ikuzo/anime/errors";
 import { completeIds } from "@ikuzo/anime/ids";
-import type { AnimeSummary, BrowseList, NextEpisode, Paged, SearchParams, Season, Source } from "@ikuzo/anime/types";
+import type {
+  AnimeDetail,
+  AnimeSummary,
+  BrowseList,
+  NextEpisode,
+  Paged,
+  SearchParams,
+  Season,
+  Source,
+} from "@ikuzo/anime/types";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
+import type { PersistQueryClientOptions } from "@tanstack/react-query-persist-client";
 import { useMemo } from "react";
 
+import { kv } from "./kv";
 import { anidb, anilist, getProvider } from "./sources";
-import { useEntries } from "./store";
+import { getEntry, useEntries } from "./store";
 import type { LibraryEntry } from "./store";
 import { useNow } from "./use-now";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 const STALE_DEFAULT_MS = 30 * MINUTE_MS;
+/** Show pages barely change: a copy this fresh is shown without asking the server again. */
+const STALE_DETAIL_MS = 12 * HOUR_MS;
+/** How long show pages stay saved on the phone for offline use. */
+const KEEP_OFFLINE_MS = 14 * DAY_MS;
 const HTTP_CLIENT_ERROR = 400;
 const HTTP_SERVER_ERROR = 500;
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -37,26 +55,81 @@ const nextPage = (last: Paged<unknown>): number | undefined => (last.hasNextPage
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 6 * HOUR_MS,
+      // Kept as long as they are saved on the phone, so saved pages are not dropped early.
+      gcTime: KEEP_OFFLINE_MS,
+      // Saved data is shown straight away, even offline; a refresh only runs when there is a network.
+      networkMode: "offlineFirst",
       retry: shouldRetry,
       staleTime: STALE_DEFAULT_MS,
     },
   },
 });
 
+/** Data worth keeping offline: show and character pages. Search results and lists go stale too fast. */
+const OFFLINE_KEYS = new Set([
+  "anime",
+  "characters",
+  "character",
+  "recommendations",
+  "stats",
+  "themes",
+  "anidb",
+  "genres",
+]);
+
+const shouldSaveOffline = (query: Query): boolean =>
+  query.state.status === "success" &&
+  // dataUpdatedAt 0 is the library's stand-in copy, not a downloaded page.
+  query.state.dataUpdatedAt > 0 &&
+  OFFLINE_KEYS.has(String(query.queryKey[0]));
+
+export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
+  // Bump when the shape of saved data changes, so old copies are thrown away.
+  buster: "1",
+  dehydrateOptions: { shouldDehydrateQuery: shouldSaveOffline },
+  maxAge: KEEP_OFFLINE_MS,
+  persister: createAsyncStoragePersister({ key: "ikuzo-offline-cache", storage: kv, throttleTime: 2000 }),
+};
+
+const SOURCE_URLS: Record<Source, (id: number) => string> = {
+  anilist: (id) => `https://anilist.co/anime/${id}`,
+  mal: (id) => `https://myanimelist.net/anime/${id}`,
+};
+
+/**
+ * A show in the library opens even if its page was never downloaded and the phone is offline:
+ * the library's copy fills the page until the full details arrive.
+ */
+const fromLibrary = (source: Source, id: number): AnimeDetail | undefined => {
+  const entry = getEntry(`${source}:${id}`);
+  if (entry === undefined) {
+    return undefined;
+  }
+  return { ...entry.anime, externalLinks: [], relations: [], studios: [], url: SOURCE_URLS[source](id) };
+};
+
 export const useAnime = (source: Source, id: number) =>
-  useQuery({ queryFn: async () => await getProvider(source).getAnime(id), queryKey: ["anime", source, id] });
+  useQuery({
+    initialData: () => fromLibrary(source, id),
+    // The library copy counts as old, so the full page is still fetched when possible.
+    initialDataUpdatedAt: 0,
+    queryFn: async () => await getProvider(source).getAnime(id),
+    queryKey: ["anime", source, id],
+    staleTime: STALE_DETAIL_MS,
+  });
 
 export const useCharacters = (source: Source, id: number) =>
   useQuery({
     queryFn: async () => await getProvider(source).getCharacters(id),
     queryKey: ["characters", source, id],
+    staleTime: STALE_DETAIL_MS,
   });
 
 export const useRecommendations = (source: Source, id: number) =>
   useQuery({
     queryFn: async () => await getProvider(source).getRecommendations(id),
     queryKey: ["recommendations", source, id],
+    staleTime: STALE_DETAIL_MS,
   });
 
 export const useReviews = (source: Source, id: number) =>
@@ -82,7 +155,11 @@ export const useThemes = (source: Source, id: number, malId?: number) =>
   });
 
 export const useCharacter = (source: Source, id: number) =>
-  useQuery({ queryFn: async () => await getProvider(source).getCharacter(id), queryKey: ["character", source, id] });
+  useQuery({
+    queryFn: async () => await getProvider(source).getCharacter(id),
+    queryKey: ["character", source, id],
+    staleTime: STALE_DETAIL_MS,
+  });
 
 export const useBrowse = (source: Source, list: BrowseList) =>
   useInfiniteQuery({
@@ -135,7 +212,7 @@ export const useAniDbEpisodes = (anime: AnimeSummary | undefined) =>
       return ids.anidb === undefined ? null : await anidb.getAnime(ids.anidb);
     },
     queryKey: ["anidb", anime?.source, anime?.id],
-    staleTime: 24 * HOUR_MS,
+    staleTime: DAY_MS,
   });
 
 export interface Airing {

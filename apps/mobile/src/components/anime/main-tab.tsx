@@ -37,15 +37,15 @@ const CHARACTER_PREVIEW = 12;
 const CHARACTER_TILE_WIDTH = 110;
 
 const styles = StyleSheet.create({
-  buttonText: { color: colors.textStrong, fontSize: 15, fontWeight: "700", letterSpacing: 1.25 },
+  buttonText: { color: colors.textStrong, fontSize: 14, fontWeight: "700", letterSpacing: 1.25 },
   carousel: { gap: spacing.md, paddingHorizontal: spacing.lg },
   center: { alignItems: "center", gap: spacing.sm },
   controls: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    gap: spacing.md,
+    gap: spacing.sm,
     marginHorizontal: spacing.md,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   genre: {
     backgroundColor: colors.surface,
@@ -65,18 +65,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     flexDirection: "row",
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  linkLabel: { color: colors.textStrong, fontSize: 16, fontWeight: "600" },
+  linkLabel: { color: colors.textStrong, fontSize: 14, fontWeight: "600" },
   links: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, justifyContent: "center", marginTop: spacing.sm },
-  // MaterialButton / AnYmeOutlinedButton: 4dp corners, 13dp vertical padding.
+  // anYme's MaterialButton: 4dp corners, about 36dp tall.
   outlineButton: {
     alignItems: "center",
     borderColor: colors.primary,
     borderRadius: 4,
-    borderWidth: 2,
-    paddingVertical: 11,
+    borderWidth: 1.5,
+    paddingVertical: 7.5,
   },
   pad: { paddingHorizontal: spacing.lg },
   primaryButton: {
@@ -84,9 +84,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 4,
     elevation: 2,
-    paddingVertical: 13,
+    paddingVertical: 9,
   },
-  statLabel: { color: colors.textStrong, fontSize: 16, fontWeight: "700" },
+  statLabel: { color: colors.textStrong, fontSize: 14, fontWeight: "700" },
   statRow: { flexDirection: "row", justifyContent: "space-between" },
   statTile: { alignItems: "center", borderRadius: radius.sm, flex: 1, gap: 2, paddingVertical: spacing.xs },
   tab: { gap: spacing.md, paddingVertical: spacing.md },
@@ -104,7 +104,7 @@ const StatTile = ({
   onPress?: () => void;
 }) => (
   <Touchable accessibilityRole="button" disabled={onPress === undefined} onPress={onPress} style={styles.statTile}>
-    <MaterialCommunityIcons color={colors.textStrong} name={icon} size={30} />
+    <MaterialCommunityIcons color={colors.textStrong} name={icon} size={24} />
     <AppText numberOfLines={1} style={styles.statLabel}>
       {label}
     </AppText>
@@ -247,7 +247,7 @@ const LinkButton = ({
   onPress: () => void;
 }) => (
   <Touchable accessibilityRole="link" onPress={onPress} style={styles.linkButton}>
-    <Ionicons color={iconColor} name={icon} size={24} />
+    <Ionicons color={iconColor} name={icon} size={18} />
     <AppText style={styles.linkLabel}>{label}</AppText>
   </Touchable>
 );

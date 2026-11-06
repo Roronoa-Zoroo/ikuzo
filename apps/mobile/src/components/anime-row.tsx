@@ -37,7 +37,8 @@ const POSTER_HEIGHT = 110;
 
 const styles = StyleSheet.create({
   // Measured from anYme's cardview_anime_main layout.
-  body: { flex: 1, paddingBottom: 6, paddingLeft: 10, paddingRight: 4, paddingTop: 6 },
+  // The progress bar sits a little above the card's bottom edge, not on it.
+  body: { flex: 1, paddingBottom: 12, paddingLeft: 10, paddingRight: 4, paddingTop: 6 },
   card: {
     backgroundColor: colors.card,
     borderRadius: 10,
@@ -50,7 +51,9 @@ const styles = StyleSheet.create({
   footer: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
   footerText: { color: colors.text, fontSize: 13, fontWeight: "700" },
   more: { borderRadius: radius.pill, marginRight: -4, marginTop: -2, padding: 2 },
-  poster: { backgroundColor: colors.surface, height: POSTER_HEIGHT, width: POSTER_WIDTH },
+  // The poster fills the card's full height, however tall the text makes it.
+  poster: { backgroundColor: colors.surface, minHeight: POSTER_HEIGHT, width: POSTER_WIDTH },
+  posterImage: { ...StyleSheet.absoluteFill },
   posterLabel: {
     backgroundColor: colors.overlay,
     borderRadius: radius.sm,
@@ -89,8 +92,8 @@ export const AnimeRow = ({
     // Rows fade in and out like RecyclerView's default item animator (120 ms).
     <Animated.View entering={FadeIn.duration(duration.itemFade)} exiting={FadeOut.duration(duration.itemFade)}>
       <Touchable accessibilityRole="button" onPress={onPress} scaleOnPress style={styles.card}>
-        <View>
-          <Image contentFit="cover" source={anime.image} style={styles.poster} transition={duration.image} />
+        <View style={styles.poster}>
+          <Image contentFit="cover" source={anime.image} style={styles.posterImage} transition={duration.image} />
           {posterLabel === undefined ? null : (
             <View style={styles.posterLabel}>
               <AppText style={styles.posterLabelText}>{posterLabel}</AppText>

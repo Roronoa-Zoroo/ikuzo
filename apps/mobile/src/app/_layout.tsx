@@ -1,11 +1,13 @@
 import { parseJson } from "@ikuzo/anime/http";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, useMemo, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { showToast, ToastHost } from "@/components/toast";
 import { useAccounts } from "@/lib/accounts";
@@ -13,10 +15,12 @@ import { whenLibraryReady } from "@/lib/db";
 import { openAnime } from "@/lib/nav";
 import { handleNotificationTaps, setupNotifications, syncReminders } from "@/lib/notifications";
 import type { Reminder } from "@/lib/notifications";
-import { queryClient, useLibraryAiring } from "@/lib/queries";
+import { persistOptions, queryClient, useLibraryAiring } from "@/lib/queries";
 import { displayTitle, getEntry, useSettings } from "@/lib/store";
 import { pullQuietly, startSyncWatcher, syncOnForeground } from "@/lib/sync";
 import { colors } from "@/lib/theme";
+
+const styles = StyleSheet.create({ root: { backgroundColor: colors.background, flex: 1 } });
 
 /** Shows the error and a retry button instead of closing the app when a screen throws. */
 export { ErrorBoundary } from "expo-router";
@@ -117,6 +121,7 @@ const TrackerSync = () => {
 type LoadState = "loading" | "ready" | "failed";
 
 const RootLayout = () => {
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
@@ -138,27 +143,31 @@ const RootLayout = () => {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {/* expo-status-bar takes a colour scheme name here, not a style object. */}
-      {/* oxlint-disable-next-line react/style-prop-object */}
-      <StatusBar style="light" />
-      {state === "ready" ? (
-        <>
-          <ReminderSync />
-          <TrackerSync />
-          <NotificationTaps />
-        </>
-      ) : null}
-      <Stack
-        screenOptions={{
-          // Android's own screen transition, as anYme's activities used.
-          animation: "default",
-          contentStyle: { backgroundColor: colors.background },
-          headerShown: false,
-        }}
-      />
-      <ToastHost />
-    </QueryClientProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+        {/* expo-status-bar takes a colour scheme name here, not a style object. */}
+        {/* oxlint-disable-next-line react/style-prop-object */}
+        <StatusBar style="light" />
+        {state === "ready" ? (
+          <>
+            <ReminderSync />
+            <TrackerSync />
+            <NotificationTaps />
+          </>
+        ) : null}
+        <Stack
+          screenOptions={{
+            // Android's own screen transition, as anYme's activities used.
+            animation: "default",
+            // Android draws edge to edge: this keeps every screen (the tab bar, the last row of a
+            // list) above the phone's navigation bar instead of under it.
+            contentStyle: { backgroundColor: colors.background, paddingBottom: insets.bottom },
+            headerShown: false,
+          }}
+        />
+        <ToastHost />
+      </PersistQueryClientProvider>
+    </GestureHandlerRootView>
   );
 };
 

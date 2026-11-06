@@ -4,15 +4,18 @@ import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { Alert, Share, StyleSheet, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Alert, PanResponder, Share, StyleSheet, View } from "react-native";
 import Animated, {
   Extrapolation,
   FadeIn,
   interpolate,
+  SlideInLeft,
+  SlideInRight,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,6 +23,7 @@ import { EpisodesTab, ReviewsTab, SongsTab, StatsTab } from "@/components/anime/
 import { MainTab } from "@/components/anime/main-tab";
 import { NotesTab } from "@/components/anime/notes-tab";
 import { IconButton } from "@/components/header";
+import { ImageViewer } from "@/components/image-viewer";
 import { OptionsSheet } from "@/components/options-sheet";
 import type { OptionItem } from "@/components/options-sheet";
 import { ErrorState, Loading } from "@/components/states";
@@ -54,6 +58,14 @@ const POSTER_OVERHANG = 30;
 
 /** Toolbar height below the status bar (Android's ?actionBarSize). */
 const BAR_HEIGHT = 56;
+/** A sideways drag this long (or a quick flick) moves to the next tab, like a pager. */
+const SWIPE_DISTANCE = 70;
+const SWIPE_VELOCITY = 0.5;
+/** How far a drag must go sideways, and how much more sideways than down, before it counts as a swipe. */
+const SWIPE_SLOP = 20;
+/** Past the first or last tab the content only gives a little, so the swipe feels blocked. */
+const EDGE_RESISTANCE = 0.15;
+
 /** The banner moves at half the scroll speed, like CollapsingToolbarLayout's parallax mode. */
 const PARALLAX = 0.5;
 
@@ -74,7 +86,10 @@ const styles = StyleSheet.create({
   },
   hero: { paddingBottom: spacing.md, paddingHorizontal: 15 },
   optionsButton: { borderRadius: radius.sm, padding: spacing.sm },
+  page: { minHeight: BANNER_HEIGHT * 2, paddingBottom: spacing.xl },
+  pages: { overflow: "hidden" },
   poster: { backgroundColor: colors.surface, borderRadius: 4, height: POSTER_HEIGHT, width: POSTER_WIDTH },
+  posterButton: { alignSelf: "flex-start", borderRadius: 4 },
   screen: { backgroundColor: colors.background, flex: 1 },
   tabs: { left: 0, position: "absolute", right: 0, top: 0, zIndex: 2 },
   title: { color: colors.textStrong, flexShrink: 1, fontFamily, fontSize: fontSize.xl, fontWeight: "700" },
@@ -175,12 +190,60 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
   const language = useSettings().titleLanguage;
   const [tab, setTab] = useState<DetailTab>("main");
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  /** Which way the last tab change went, so the new tab slides in from that side. */
+  const [direction, setDirection] = useState(0);
   const [tabsTop, setTabsTop] = useState(BANNER_HEIGHT + POSTER_HEIGHT / 2);
   const [tabsHeight, setTabsHeight] = useState(0);
   const title = displayTitle(anime, language);
   const options = useOptions(anime, title);
   const barHeight = insets.top + BAR_HEIGHT;
   const scrollY = useSharedValue(0);
+  const dragX = useSharedValue(0);
+  const tabIndex = TABS.findIndex((item) => item.key === tab);
+
+  const chooseTab = (next: DetailTab) => {
+    const nextIndex = TABS.findIndex((item) => item.key === next);
+    setDirection(Math.sign(nextIndex - tabIndex));
+    setTab(next);
+  };
+
+  // Swiping sideways over the content moves between tabs. Horizontal carousels inside a tab
+  // still scroll: their native scroll view claims the drag first and ends this one.
+  const swipe = useMemo(() => {
+    const neighbour = (offset: number) => TABS[tabIndex + offset];
+    const settle = () => {
+      dragX.set(withTiming(0, { duration: duration.itemMove }));
+    };
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) =>
+        Math.abs(gesture.dx) > SWIPE_SLOP && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2,
+      onPanResponderMove: (_event, gesture) => {
+        const blocked = neighbour(gesture.dx < 0 ? 1 : -1) === undefined;
+        dragX.set(gesture.dx * (blocked ? EDGE_RESISTANCE : 1));
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        const forward = gesture.dx < -SWIPE_DISTANCE || gesture.vx < -SWIPE_VELOCITY;
+        const back = gesture.dx > SWIPE_DISTANCE || gesture.vx > SWIPE_VELOCITY;
+        let offset = 0;
+        if (forward) {
+          offset = 1;
+        } else if (back) {
+          offset = -1;
+        }
+        const next = offset === 0 ? undefined : neighbour(offset);
+        if (next === undefined) {
+          settle();
+          return;
+        }
+        dragX.set(0);
+        setDirection(offset);
+        setTab(next.key);
+      },
+      onPanResponderTerminate: settle,
+      onPanResponderTerminationRequest: () => true,
+    });
+  }, [dragX, tabIndex]);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.set(event.contentOffset.y);
@@ -201,6 +264,7 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
   const barStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [collapseStart, collapseEnd], [0, 1], Extrapolation.CLAMP),
   }));
+  const dragStyle = useAnimatedStyle(() => ({ transform: [{ translateX: dragX.value }] }));
   const tabsStyle = useAnimatedStyle(() => ({
     // The tab strip scrolls with the content, then pins under the toolbar.
     transform: [{ translateY: Math.max(barHeight, tabsTop - scrollY.value) }],
@@ -263,7 +327,7 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
         }}
         style={[styles.tabs, tabsStyle]}
       >
-        <TabStrip onChange={setTab} tabs={TABS} value={tab} />
+        <TabStrip onChange={chooseTab} tabs={TABS} value={tab} />
       </Animated.View>
 
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16}>
@@ -274,24 +338,47 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
           }}
           style={[styles.hero, { marginTop: insets.top + BANNER_HEIGHT - (POSTER_HEIGHT - POSTER_OVERHANG) }]}
         >
-          <Image contentFit="cover" source={anime.image} style={styles.poster} transition={duration.image} />
+          <Touchable
+            accessibilityLabel="View poster"
+            accessibilityRole="imagebutton"
+            disabled={anime.image === undefined}
+            onPress={() => {
+              setViewing(true);
+            }}
+            style={styles.posterButton}
+          >
+            <Image contentFit="cover" source={anime.image} style={styles.poster} transition={duration.image} />
+          </Touchable>
         </View>
         {/* Room for the floating tab strip. */}
         <View style={{ height: tabsHeight }} />
-        <Animated.View
-          entering={FadeIn.duration(duration.crossfade / 2)}
-          key={tab}
-          style={{ minHeight: BANNER_HEIGHT * 2, paddingBottom: insets.bottom + spacing.xl }}
-        >
-          {tab === "main" ? <MainTab anime={anime} /> : null}
-          {tab === "episodes" ? <EpisodesTab anime={anime} /> : null}
-          {tab === "notes" ? <NotesTab anime={anime} /> : null}
-          {tab === "reviews" ? <ReviewsTab anime={anime} /> : null}
-          {tab === "stats" ? <StatsTab anime={anime} /> : null}
-          {tab === "songs" ? <SongsTab anime={anime} /> : null}
+        <Animated.View {...swipe.panHandlers} style={[styles.pages, dragStyle]}>
+          <Animated.View
+            entering={
+              direction === 0
+                ? FadeIn.duration(duration.crossfade / 2)
+                : (direction > 0 ? SlideInRight : SlideInLeft).duration(duration.itemMove)
+            }
+            key={tab}
+            style={styles.page}
+          >
+            {tab === "main" ? <MainTab anime={anime} /> : null}
+            {tab === "episodes" ? <EpisodesTab anime={anime} /> : null}
+            {tab === "notes" ? <NotesTab anime={anime} /> : null}
+            {tab === "reviews" ? <ReviewsTab anime={anime} /> : null}
+            {tab === "stats" ? <StatsTab anime={anime} /> : null}
+            {tab === "songs" ? <SongsTab anime={anime} /> : null}
+          </Animated.View>
         </Animated.View>
       </Animated.ScrollView>
 
+      <ImageViewer
+        onClose={() => {
+          setViewing(false);
+        }}
+        uri={anime.image}
+        visible={viewing}
+      />
       <OptionsSheet
         items={options}
         onClose={() => {
@@ -309,6 +396,10 @@ const AnimeScreen = () => {
   const id = Number(params.id);
   const anime = useAnime(source, id);
 
+  // A saved copy (or the library's) is shown even when refreshing it failed, e.g. offline.
+  if (anime.data !== undefined) {
+    return <Detail anime={anime.data} />;
+  }
   if (anime.isPending) {
     return <Loading />;
   }
@@ -322,7 +413,7 @@ const AnimeScreen = () => {
       />
     );
   }
-  return <Detail anime={anime.data} />;
+  return <Loading />;
 };
 
 export default AnimeScreen;
