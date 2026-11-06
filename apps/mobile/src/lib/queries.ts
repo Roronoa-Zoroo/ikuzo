@@ -16,6 +16,7 @@ import { experimental_createQueryPersister } from "@tanstack/react-query-persist
 import { useMemo } from "react";
 
 import { kv } from "./kv";
+import { previewOf } from "./nav";
 import { anidb, anilist, getProvider } from "./sources";
 import { getEntry, useEntries } from "./store";
 import type { LibraryEntry } from "./store";
@@ -122,19 +123,20 @@ const SOURCE_URLS: Record<Source, (id: number) => string> = {
 };
 
 /**
- * A show in the library opens even if its page was never downloaded and the phone is offline:
- * the library's copy fills the page until the full details arrive.
+ * What is already known about a show before its page loads: the card that was tapped, or the
+ * library's copy. The page draws from it at once, and it stands in when offline.
  */
-export const libraryCopy = (source: Source, id: number): AnimeDetail | undefined => {
-  const entry = getEntry(`${source}:${id}`);
-  if (entry === undefined) {
+export const previewDetail = (source: Source, id: number): AnimeDetail | undefined => {
+  const anime = getEntry(`${source}:${id}`)?.anime ?? previewOf(source, id);
+  if (anime === undefined) {
     return undefined;
   }
-  return { ...entry.anime, externalLinks: [], relations: [], studios: [], url: SOURCE_URLS[source](id) };
+  return { ...anime, externalLinks: [], relations: [], studios: [], url: SOURCE_URLS[source](id) };
 };
 
 export const useAnime = (source: Source, id: number) =>
   useQuery({
+    placeholderData: () => previewDetail(source, id),
     queryFn: async () => await getProvider(source).getAnime(id),
     queryKey: ["anime", source, id],
   });
@@ -283,15 +285,15 @@ export const useLibraryAiring = () => {
 
   // Re-evaluated every minute, so shows that just aired move on to their next episode.
   const now = useNow();
-  const data = useMemo((): Airing[] | undefined => {
-    if (times.data === undefined) {
-      return undefined;
-    }
+  const data = useMemo((): Airing[] => {
+    // Until the exact times arrive, each show's saved next episode (or weekly slot) is used, so
+    // the calendar shows at once instead of a spinner.
+    const known = times.data ?? {};
     const result: Airing[] = [];
     for (const entry of candidates) {
       const { mal, anilist: aniListId } = entry.anime.ids;
       const exactKey = mal === undefined ? `anilist:${aniListId ?? ""}` : `mal:${mal}`;
-      const fresh = exactKey in times.data ? times.data[exactKey] : entry.anime.nextEpisode;
+      const fresh = exactKey in known ? known[exactKey] : entry.anime.nextEpisode;
       const next = estimateNextEpisode({ ...entry.anime, nextEpisode: fresh }, now);
       if (next !== undefined) {
         result.push({ airingAt: next.airingAt, entry, episode: next.episode });
@@ -304,8 +306,10 @@ export const useLibraryAiring = () => {
     data,
     error: times.error,
     isError: times.isError,
-    isPending: times.isPending,
+    isPending: false,
     isRefetching: times.isRefetching,
     refetch: times.refetch,
+    /** The exact air times have arrived (reminders wait for them). */
+    settled: times.data !== undefined,
   };
 };

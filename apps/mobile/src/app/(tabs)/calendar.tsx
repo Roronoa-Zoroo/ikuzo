@@ -85,20 +85,9 @@ const MyShows = () => {
   const airing = useLibraryAiring();
   const hideUpcoming = useSettings().calendarHideUpcoming;
   const now = useNow();
-  if (airing.isPending) {
-    return <Loading />;
-  }
-  if (airing.isError) {
-    return (
-      <ErrorState
-        error={airing.error}
-        onRetry={() => {
-          void airing.refetch();
-        }}
-      />
-    );
-  }
-  const items = (airing.data ?? []).filter((item) => !hideUpcoming || item.entry.anime.status === "airing");
+  // Shows at once with each show's saved air time; exact times replace them when they arrive
+  // (offline, the saved times stay).
+  const items = airing.data.filter((item) => !hideUpcoming || item.entry.anime.status === "airing");
   return (
     <FlatList
       contentContainerStyle={styles.list}

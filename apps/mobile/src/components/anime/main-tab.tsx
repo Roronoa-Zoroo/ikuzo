@@ -8,6 +8,7 @@ import { Alert, FlatList, StyleSheet, View } from "react-native";
 import { AnimeCarousel } from "@/components/anime-carousel";
 import { PosterTile } from "@/components/poster-tile";
 import { Section } from "@/components/section";
+import { SkeletonLines, SkeletonTiles } from "@/components/skeleton";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { UpdateSheet } from "@/components/update-sheet";
@@ -20,6 +21,7 @@ import { useCharacters, useRecommendations } from "@/lib/queries";
 import { animeKey, characterKey, library, useEntry, useFavoriteCharacters, useIsBookmarked } from "@/lib/store";
 import type { WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
+import { useAfterTransition } from "@/lib/use-after-transition";
 import { useNow } from "@/lib/use-now";
 
 /** anYme's compact status words for the stat row. */
@@ -329,8 +331,15 @@ const Info = ({ anime }: { anime: AnimeDetail }) => {
   );
 };
 
-const Synopsis = ({ text }: { text?: string }) => {
+const Synopsis = ({ text, partial }: { text?: string; partial: boolean }) => {
   const [expanded, setExpanded] = useState(false);
+  if (partial && text === undefined) {
+    return (
+      <Section title="Synopsis">
+        <SkeletonLines lines={SYNOPSIS_PREVIEW_LINES} />
+      </Section>
+    );
+  }
   return (
     <Section title="Synopsis">
       <Touchable
@@ -361,11 +370,7 @@ const Characters = ({ anime }: { anime: AnimeDetail }) => {
       }}
       title="Characters"
     >
-      {characters.isPending ? (
-        <AppText style={styles.pad} variant="caption">
-          Loading…
-        </AppText>
-      ) : null}
+      {characters.isPending ? <SkeletonTiles width={CHARACTER_TILE_WIDTH} /> : null}
       <FlatList
         contentContainerStyle={styles.carousel}
         data={characters.data?.slice(0, CHARACTER_PREVIEW) ?? []}
@@ -403,7 +408,7 @@ const relationRank = (relation: string): number => {
 };
 
 /** Related anime as poster cards (relation underneath) that open their own page. */
-const Related = ({ anime }: { anime: AnimeDetail }) => {
+const Related = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) => {
   const items = anime.relations
     .toSorted((a, b) => relationRank(a.relation) - relationRank(b.relation))
     .flatMap((group) =>
@@ -411,7 +416,8 @@ const Related = ({ anime }: { anime: AnimeDetail }) => {
     );
   return (
     <Section flush title="Related">
-      {items.length === 0 ? (
+      {items.length === 0 && partial ? <SkeletonTiles width={CHARACTER_TILE_WIDTH} /> : null}
+      {items.length === 0 && !partial ? (
         <AppText style={styles.pad} variant="caption">
           No related anime.
         </AppText>
@@ -450,25 +456,42 @@ const Recommendations = ({ anime }: { anime: AnimeDetail }) => {
   );
 };
 
-export const MainTab = ({ anime }: { anime: AnimeDetail }) => (
-  <View style={styles.tab}>
-    <ListControls anime={anime} />
-    <NextEpisodeCard anime={anime} />
-    <Info anime={anime} />
-    {anime.genres.length === 0 ? null : (
-      <Section title="Genres">
-        <View style={styles.genres}>
-          {anime.genres.map((genre) => (
-            <View key={genre} style={styles.genre}>
-              <AppText variant="caption">{genre}</AppText>
-            </View>
-          ))}
-        </View>
-      </Section>
-    )}
-    <Synopsis text={anime.synopsis} />
-    <Characters anime={anime} />
-    <Related anime={anime} />
-    <Recommendations anime={anime} />
-  </View>
+/** Room the lower sections take while the screen slides in, so nothing jumps when they appear. */
+const LowerPlaceholder = () => (
+  <Section flush title="Characters">
+    <SkeletonTiles width={CHARACTER_TILE_WIDTH} />
+  </Section>
 );
+
+export const MainTab = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) => {
+  // Carousels wait until the slide-in is over, so the animation is not competing with them.
+  const settled = useAfterTransition();
+  return (
+    <View style={styles.tab}>
+      <ListControls anime={anime} />
+      <NextEpisodeCard anime={anime} />
+      <Info anime={anime} />
+      {anime.genres.length === 0 ? null : (
+        <Section title="Genres">
+          <View style={styles.genres}>
+            {anime.genres.map((genre) => (
+              <View key={genre} style={styles.genre}>
+                <AppText variant="caption">{genre}</AppText>
+              </View>
+            ))}
+          </View>
+        </Section>
+      )}
+      <Synopsis partial={partial} text={anime.synopsis} />
+      {settled ? (
+        <>
+          <Characters anime={anime} />
+          <Related anime={anime} partial={partial} />
+          <Recommendations anime={anime} />
+        </>
+      ) : (
+        <LowerPlaceholder />
+      )}
+    </View>
+  );
+};

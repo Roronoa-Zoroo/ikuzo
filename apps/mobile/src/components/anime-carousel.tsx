@@ -1,12 +1,13 @@
 import type { AnimeSummary } from "@ikuzo/anime/types";
-import { ActivityIndicator, FlatList, StyleSheet } from "react-native";
+import { FlatList, StyleSheet } from "react-native";
 
 import { openAnime } from "@/lib/nav";
 import { animeKey, displayTitle, useSettings } from "@/lib/store";
-import { colors, spacing } from "@/lib/theme";
+import { spacing } from "@/lib/theme";
 
 import { PosterTile } from "./poster-tile";
 import { Section } from "./section";
+import { SkeletonTiles } from "./skeleton";
 import { AppText } from "./text";
 
 interface AnimeCarouselProps {
@@ -27,7 +28,7 @@ export const AnimeCarousel = ({ title, items, loading = false, error, onViewAll 
   const language = useSettings().titleLanguage;
   return (
     <Section actionLabel={onViewAll === undefined ? undefined : "View all"} flush onAction={onViewAll} title={title}>
-      {loading ? <ActivityIndicator color={colors.accent} style={styles.status} /> : null}
+      {loading ? <SkeletonTiles /> : null}
       {error === undefined || error === null ? null : (
         <AppText style={styles.status} variant="caption">
           {error instanceof Error ? error.message : "Could not load"}

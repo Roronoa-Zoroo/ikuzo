@@ -37,9 +37,9 @@ const ReminderSync = () => {
   // reschedule every notification: the effect only runs when the reminders themselves change.
   const payload = useMemo(
     () =>
-      airing.data === undefined
-        ? undefined
-        : JSON.stringify(
+      // Reminders wait for the exact air times, not the saved estimates shown until then.
+      airing.settled
+        ? JSON.stringify(
             airing.data
               .filter((item) => item.entry.notify)
               .map((item): Reminder => ({
@@ -49,8 +49,9 @@ const ReminderSync = () => {
                 title: displayTitle(item.entry.anime, language),
                 total: item.entry.anime.episodes,
               }))
-          ),
-    [airing.data, language]
+          )
+        : undefined,
+    [airing.data, airing.settled, language]
   );
 
   useEffect(() => {

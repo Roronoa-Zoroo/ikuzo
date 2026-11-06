@@ -33,7 +33,7 @@ import { Touchable } from "@/components/touchable";
 import { confirmRemove } from "@/lib/episodes";
 import { openLink } from "@/lib/links";
 import { duration } from "@/lib/motion";
-import { libraryCopy, useAnime } from "@/lib/queries";
+import { previewDetail, useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
 import { displayTitle, library, useEntry, useIsBookmarked, useIsFavoriteShow, useSettings } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
@@ -185,7 +185,7 @@ const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
   return items;
 };
 
-const Detail = ({ anime }: { anime: AnimeDetail }) => {
+const Detail = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) => {
   const insets = useSafeAreaInsets();
   const language = useSettings().titleLanguage;
   const [tab, setTab] = useState<DetailTab>("main");
@@ -362,7 +362,7 @@ const Detail = ({ anime }: { anime: AnimeDetail }) => {
             key={tab}
             style={styles.page}
           >
-            {tab === "main" ? <MainTab anime={anime} /> : null}
+            {tab === "main" ? <MainTab anime={anime} partial={partial} /> : null}
             {tab === "episodes" ? <EpisodesTab anime={anime} /> : null}
             {tab === "notes" ? <NotesTab anime={anime} /> : null}
             {tab === "reviews" ? <ReviewsTab anime={anime} /> : null}
@@ -396,12 +396,12 @@ const AnimeScreen = () => {
   const id = Number(params.id);
   const anime = useAnime(source, id);
   // Offline (paused) or failed with nothing saved: a show in the library still opens from its list copy.
-  const fallback = anime.isError || anime.fetchStatus === "paused" ? libraryCopy(source, id) : undefined;
+  const fallback = anime.isError || anime.fetchStatus === "paused" ? previewDetail(source, id) : undefined;
   const data = anime.data ?? fallback;
 
-  // A saved copy is shown even when refreshing it failed, e.g. offline.
+  // Drawn at once from the tapped card (or a saved copy); the rest fills in when it arrives.
   if (data !== undefined) {
-    return <Detail anime={data} />;
+    return <Detail anime={data} partial={anime.isPlaceholderData || anime.data === undefined} />;
   }
   if (anime.isPending) {
     return <Loading />;

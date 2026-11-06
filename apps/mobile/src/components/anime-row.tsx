@@ -96,7 +96,8 @@ export const AnimeRow = ({
           recyclingKey={anime.image}
           source={anime.image}
           style={styles.posterImage}
-          transition={duration.image}
+          // Short: recycled rows show their poster again often, and a long fade looked like flicker.
+          transition={duration.press}
         />
         {posterLabel === undefined ? null : (
           <View style={styles.posterLabel}>
