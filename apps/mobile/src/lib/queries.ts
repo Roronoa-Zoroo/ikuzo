@@ -27,10 +27,13 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const STALE_DEFAULT_MS = 30 * MINUTE_MS;
-/** Show pages barely change: a copy this fresh is shown without asking the server again. */
-const STALE_DETAIL_MS = 12 * HOUR_MS;
-/** How long show pages stay saved on the phone for offline use. */
-const KEEP_OFFLINE_MS = 14 * DAY_MS;
+/** anYme's refresh rule for show pages, which suits pages that rarely change. */
+const FRESH_UPCOMING_MS = HOUR_MS;
+const FRESH_AIRING_MS = 2 * DAY_MS;
+const FRESH_OLD_FINISHED_MS = 14 * DAY_MS;
+const FRESH_DEFAULT_MS = 5 * DAY_MS;
+/** Shows that finished before this year are settled; their pages are checked least often. */
+const SETTLED_BEFORE_YEAR = 2017;
 const HTTP_CLIENT_ERROR = 400;
 const HTTP_SERVER_ERROR = 500;
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -55,8 +58,7 @@ const nextPage = (last: Paged<unknown>): number | undefined => (last.hasNextPage
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Kept as long as they are saved on the phone, so saved pages are not dropped early.
-      gcTime: KEEP_OFFLINE_MS,
+      gcTime: 6 * HOUR_MS,
       // Saved data is shown straight away, even offline; a refresh only runs when there is a network.
       networkMode: "offlineFirst",
       retry: shouldRetry,
@@ -64,6 +66,43 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * How long a saved show page is used as it is, before Ikuzo asks the server again. The same rule
+ * as anYme: an upcoming show changes often, an old finished one hardly ever.
+ */
+const freshFor = (anime: Partial<AnimeDetail> | undefined): number => {
+  if (anime === undefined) {
+    return 0;
+  }
+  if (anime.status === "upcoming") {
+    return FRESH_UPCOMING_MS;
+  }
+  if (anime.status === "airing") {
+    return FRESH_AIRING_MS;
+  }
+  const year = anime.year ?? Number(anime.airedFrom?.slice(0, 4));
+  return anime.status === "finished" && year < SETTLED_BEFORE_YEAR ? FRESH_OLD_FINISHED_MS : FRESH_DEFAULT_MS;
+};
+
+const savedShow = (data: unknown): Partial<AnimeDetail> | undefined =>
+  typeof data === "object" && data !== null ? (data satisfies object) : undefined;
+
+/**
+ * Show and character pages are kept on the phone with no expiry, like anYme kept them in its
+ * database: an old copy is refreshed when it is due and there is a network, and is shown
+ * meanwhile (offline too). Only the newest copy of each page is kept.
+ */
+queryClient.setQueryDefaults(["anime"], {
+  gcTime: Number.POSITIVE_INFINITY,
+  staleTime: (query) => freshFor(savedShow(query.state.data)),
+});
+for (const key of ["characters", "character", "recommendations", "stats", "themes"]) {
+  queryClient.setQueryDefaults([key], { gcTime: Number.POSITIVE_INFINITY, staleTime: FRESH_DEFAULT_MS });
+}
+for (const key of ["anidb", "genres"]) {
+  queryClient.setQueryDefaults([key], { gcTime: Number.POSITIVE_INFINITY });
+}
 
 /** Data worth keeping offline: show and character pages. Search results and lists go stale too fast. */
 const OFFLINE_KEYS = new Set([
@@ -87,7 +126,8 @@ export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   // Bump when the shape of saved data changes, so old copies are thrown away.
   buster: "1",
   dehydrateOptions: { shouldDehydrateQuery: shouldSaveOffline },
-  maxAge: KEEP_OFFLINE_MS,
+  // Saved pages never expire; each is refreshed by its own rule above.
+  maxAge: Number.POSITIVE_INFINITY,
   persister: createAsyncStoragePersister({ key: "ikuzo-offline-cache", storage: kv, throttleTime: 2000 }),
 };
 
@@ -115,21 +155,18 @@ export const useAnime = (source: Source, id: number) =>
     initialDataUpdatedAt: 0,
     queryFn: async () => await getProvider(source).getAnime(id),
     queryKey: ["anime", source, id],
-    staleTime: STALE_DETAIL_MS,
   });
 
 export const useCharacters = (source: Source, id: number) =>
   useQuery({
     queryFn: async () => await getProvider(source).getCharacters(id),
     queryKey: ["characters", source, id],
-    staleTime: STALE_DETAIL_MS,
   });
 
 export const useRecommendations = (source: Source, id: number) =>
   useQuery({
     queryFn: async () => await getProvider(source).getRecommendations(id),
     queryKey: ["recommendations", source, id],
-    staleTime: STALE_DETAIL_MS,
   });
 
 export const useReviews = (source: Source, id: number) =>
@@ -158,7 +195,6 @@ export const useCharacter = (source: Source, id: number) =>
   useQuery({
     queryFn: async () => await getProvider(source).getCharacter(id),
     queryKey: ["character", source, id],
-    staleTime: STALE_DETAIL_MS,
   });
 
 export const useBrowse = (source: Source, list: BrowseList) =>
