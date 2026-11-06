@@ -1,17 +1,16 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
-import Animated, { LinearTransition } from "react-native-reanimated";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
 import { OptionsSheet } from "@/components/options-sheet";
 import { PagerTabs } from "@/components/pager-tabs";
+import { RowList } from "@/components/row-list";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { UpdateSheet } from "@/components/update-sheet";
 import { confirmRemove, watchNextEpisode } from "@/lib/episodes";
-import { duration } from "@/lib/motion";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
 import {
@@ -59,7 +58,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
   sheetTitle: { paddingBottom: spacing.md, paddingHorizontal: spacing.xl },
 });
@@ -104,20 +102,18 @@ interface StatusListProps {
   onMore: (entry: LibraryEntry) => void;
 }
 
-/** One status page. Rows slide into place when the order changes (250 ms, like RecyclerView). */
+/** One status page. */
 const StatusList = ({ status, entries, refreshing, onRefresh, onMore }: StatusListProps) => (
-  <Animated.FlatList
-    contentContainerStyle={styles.list}
+  <RowList
     data={entries}
-    itemLayoutAnimation={LinearTransition.duration(duration.itemMove)}
-    keyExtractor={(entry) => entry.key}
-    ListEmptyComponent={
+    empty={
       <EmptyState
         icon="albums-outline"
         message="Find shows in Discover or search, then add them to your list."
         title={`Nothing in ${WATCH_STATUS_LABELS[status]}`}
       />
     }
+    keyExtractor={(entry) => entry.key}
     onRefresh={onRefresh}
     refreshing={refreshing}
     renderItem={({ item }) => (

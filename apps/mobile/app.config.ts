@@ -21,7 +21,8 @@ const config = ({ config: base }: ConfigContext): ExpoConfig =>
       predictiveBackGestureEnabled: false,
     },
     backgroundColor: BACKGROUND,
-    experiments: { typedRoutes: true },
+    // The React Compiler memoizes components, so a change only re-renders what it affects.
+    experiments: { reactCompiler: true, typedRoutes: true },
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: BUNDLE_ID,

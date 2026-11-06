@@ -11,10 +11,8 @@ import type {
   Season,
   Source,
 } from "@ikuzo/anime/types";
-import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import type { Query } from "@tanstack/react-query";
-import type { PersistQueryClientOptions } from "@tanstack/react-query-persist-client";
+import { experimental_createQueryPersister } from "@tanstack/react-query-persist-client";
 import { useMemo } from "react";
 
 import { kv } from "./kv";
@@ -90,46 +88,33 @@ const savedShow = (data: unknown): Partial<AnimeDetail> | undefined =>
 
 /**
  * Show and character pages are kept on the phone with no expiry, like anYme kept them in its
- * database: an old copy is refreshed when it is due and there is a network, and is shown
- * meanwhile (offline too). Only the newest copy of each page is kept.
+ * database. Each page is its own row in storage, read when the page is opened and written when a
+ * fresh copy arrives, so saving never re-writes everything (which would stutter the app). A saved
+ * copy is shown straight away; it is refreshed when it is due and there is a network.
  */
+const offlinePages = experimental_createQueryPersister({
+  // Bump when the shape of saved data changes, so old copies are thrown away.
+  buster: "1",
+  maxAge: Number.POSITIVE_INFINITY,
+  prefix: "ikuzo-page",
+  storage: kv,
+});
+
+const OFFLINE = { gcTime: HOUR_MS, persister: offlinePages.persisterFn } as const;
+
 queryClient.setQueryDefaults(["anime"], {
-  gcTime: Number.POSITIVE_INFINITY,
+  ...OFFLINE,
   staleTime: (query) => freshFor(savedShow(query.state.data)),
 });
 for (const key of ["characters", "character", "recommendations", "stats", "themes"]) {
-  queryClient.setQueryDefaults([key], { gcTime: Number.POSITIVE_INFINITY, staleTime: FRESH_DEFAULT_MS });
+  queryClient.setQueryDefaults([key], { ...OFFLINE, staleTime: FRESH_DEFAULT_MS });
 }
 for (const key of ["anidb", "genres"]) {
-  queryClient.setQueryDefaults([key], { gcTime: Number.POSITIVE_INFINITY });
+  queryClient.setQueryDefaults([key], OFFLINE);
 }
 
-/** Data worth keeping offline: show and character pages. Search results and lists go stale too fast. */
-const OFFLINE_KEYS = new Set([
-  "anime",
-  "characters",
-  "character",
-  "recommendations",
-  "stats",
-  "themes",
-  "anidb",
-  "genres",
-]);
-
-const shouldSaveOffline = (query: Query): boolean =>
-  query.state.status === "success" &&
-  // dataUpdatedAt 0 is the library's stand-in copy, not a downloaded page.
-  query.state.dataUpdatedAt > 0 &&
-  OFFLINE_KEYS.has(String(query.queryKey[0]));
-
-export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
-  // Bump when the shape of saved data changes, so old copies are thrown away.
-  buster: "1",
-  dehydrateOptions: { shouldDehydrateQuery: shouldSaveOffline },
-  // Saved pages never expire; each is refreshed by its own rule above.
-  maxAge: Number.POSITIVE_INFINITY,
-  persister: createAsyncStoragePersister({ key: "ikuzo-offline-cache", storage: kv, throttleTime: 2000 }),
-};
+/** Build 14 saved every page in one blob; pages are now saved one by one. */
+void kv.removeItem("ikuzo-offline-cache");
 
 const SOURCE_URLS: Record<Source, (id: number) => string> = {
   anilist: (id) => `https://anilist.co/anime/${id}`,
@@ -140,7 +125,7 @@ const SOURCE_URLS: Record<Source, (id: number) => string> = {
  * A show in the library opens even if its page was never downloaded and the phone is offline:
  * the library's copy fills the page until the full details arrive.
  */
-const fromLibrary = (source: Source, id: number): AnimeDetail | undefined => {
+export const libraryCopy = (source: Source, id: number): AnimeDetail | undefined => {
   const entry = getEntry(`${source}:${id}`);
   if (entry === undefined) {
     return undefined;
@@ -150,9 +135,6 @@ const fromLibrary = (source: Source, id: number): AnimeDetail | undefined => {
 
 export const useAnime = (source: Source, id: number) =>
   useQuery({
-    initialData: () => fromLibrary(source, id),
-    // The library copy counts as old, so the full page is still fetched when possible.
-    initialDataUpdatedAt: 0,
     queryFn: async () => await getProvider(source).getAnime(id),
     queryKey: ["anime", source, id],
   });

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
@@ -10,12 +10,22 @@ const styles = StyleSheet.create({
   track: { backgroundColor: colors.border, borderRadius: radius.pill, height: 4, overflow: "hidden" },
 });
 
-/** Watched-episodes bar that grows smoothly on +1 instead of jumping. */
-export const ProgressBar = ({ ratio }: { ratio: number }) => {
+/**
+ * Watched-episodes bar that grows smoothly on +1 instead of jumping. `id` names the show: when a
+ * recycled list row is reused for another show the bar jumps straight to its value.
+ */
+export const ProgressBar = ({ ratio, id }: { ratio: number; id?: string }) => {
   const value = useSharedValue(ratio);
+  const shown = useRef(id);
   useEffect(() => {
-    value.set(withTiming(Math.max(0, Math.min(1, ratio)), { duration: duration.itemMove, easing: easing.standard }));
-  }, [ratio, value]);
+    const target = Math.max(0, Math.min(1, ratio));
+    if (shown.current === id) {
+      value.set(withTiming(target, { duration: duration.itemMove, easing: easing.standard }));
+    } else {
+      shown.current = id;
+      value.set(target);
+    }
+  }, [id, ratio, value]);
   const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: value.value }] }));
   return (
     <View

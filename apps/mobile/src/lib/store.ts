@@ -2,7 +2,7 @@ import { diffList, isEmptyChange } from "@ikuzo/anime/account-sync";
 import type { PullPlan } from "@ikuzo/anime/account-sync";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 import {
   bookmarksCollection,
@@ -180,16 +180,43 @@ export const useEntry = (anime: EntryLookup): LibraryEntry | undefined => {
   return data;
 };
 
-export const useSettings = (): Settings => {
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ settings: settingsCollection })
-        .where(({ settings }) => eq(settings.id, SETTINGS_ID))
-        .findOne(),
+/**
+ * Settings are read by every list row (title language), so they come from one shared
+ * subscription instead of a live query per row: with hundreds of rows those queries made
+ * scrolling stutter.
+ */
+let settingsSnapshot: Settings | undefined;
+const settingsListeners = new Set<() => void>();
+let settingsSubscription: { unsubscribe: () => void } | undefined;
+
+const subscribeSettings = (onChange: () => void): (() => void) => {
+  settingsListeners.add(onChange);
+  settingsSubscription ??= settingsCollection.subscribeChanges(() => {
+    settingsSnapshot = undefined;
+    for (const listener of settingsListeners) {
+      listener();
+    }
   });
-  return data ?? DEFAULT_SETTINGS;
+  return () => {
+    settingsListeners.delete(onChange);
+    if (settingsListeners.size === 0) {
+      settingsSubscription?.unsubscribe();
+      settingsSubscription = undefined;
+      settingsSnapshot = undefined;
+    }
+  };
 };
+
+const readSettings = (): Settings => {
+  // Cached only while subscribed: without a subscription a change would not clear the cache.
+  if (settingsSubscription === undefined) {
+    return getSettings();
+  }
+  settingsSnapshot ??= getSettings();
+  return settingsSnapshot;
+};
+
+export const useSettings = (): Settings => useSyncExternalStore(subscribeSettings, readSettings, readSettings);
 
 /** Bookmarks, newest first. */
 export const useBookmarks = (): SavedAnime[] => {

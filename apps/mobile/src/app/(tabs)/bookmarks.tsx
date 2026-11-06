@@ -1,7 +1,8 @@
-import { FlatList, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
+import { RowList } from "@/components/row-list";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState } from "@/components/states";
 import { openAnime } from "@/lib/nav";
@@ -9,7 +10,6 @@ import { animeKey, useBookmarks, useEntryLookup } from "@/lib/store";
 import { colors } from "@/lib/theme";
 
 const styles = StyleSheet.create({
-  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 
@@ -30,17 +30,16 @@ const BookmarksScreen = () => {
         }}
         title="Bookmarks"
       />
-      <FlatList
-        contentContainerStyle={styles.list}
+      <RowList
         data={bookmarks}
-        keyExtractor={(item) => animeKey(item.anime)}
-        ListEmptyComponent={
+        empty={
           <EmptyState
             icon="bookmark-outline"
             message="Bookmark shows from their page to keep them here."
             title="No bookmarks yet"
           />
         }
+        keyExtractor={(item) => animeKey(item.anime)}
         renderItem={({ item }) => {
           const entry = lookup(item.anime);
           return (

@@ -1,5 +1,5 @@
 import { parseJson } from "@ikuzo/anime/http";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -15,7 +15,7 @@ import { whenLibraryReady } from "@/lib/db";
 import { openAnime } from "@/lib/nav";
 import { handleNotificationTaps, setupNotifications, syncReminders } from "@/lib/notifications";
 import type { Reminder } from "@/lib/notifications";
-import { persistOptions, queryClient, useLibraryAiring } from "@/lib/queries";
+import { queryClient, useLibraryAiring } from "@/lib/queries";
 import { displayTitle, getEntry, useSettings } from "@/lib/store";
 import { pullQuietly, startSyncWatcher, syncOnForeground } from "@/lib/sync";
 import { colors } from "@/lib/theme";
@@ -144,7 +144,7 @@ const RootLayout = () => {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+      <QueryClientProvider client={queryClient}>
         {/* expo-status-bar takes a colour scheme name here, not a style object. */}
         {/* oxlint-disable-next-line react/style-prop-object */}
         <StatusBar style="light" />
@@ -166,7 +166,7 @@ const RootLayout = () => {
           }}
         />
         <ToastHost />
-      </PersistQueryClientProvider>
+      </QueryClientProvider>
     </GestureHandlerRootView>
   );
 };

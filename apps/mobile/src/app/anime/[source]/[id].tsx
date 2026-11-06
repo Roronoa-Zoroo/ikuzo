@@ -33,7 +33,7 @@ import { Touchable } from "@/components/touchable";
 import { confirmRemove } from "@/lib/episodes";
 import { openLink } from "@/lib/links";
 import { duration } from "@/lib/motion";
-import { useAnime } from "@/lib/queries";
+import { libraryCopy, useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
 import { displayTitle, library, useEntry, useIsBookmarked, useIsFavoriteShow, useSettings } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
@@ -395,10 +395,13 @@ const AnimeScreen = () => {
   const source = isSource(params.source) ? params.source : "anilist";
   const id = Number(params.id);
   const anime = useAnime(source, id);
+  // Offline (paused) or failed with nothing saved: a show in the library still opens from its list copy.
+  const fallback = anime.isError || anime.fetchStatus === "paused" ? libraryCopy(source, id) : undefined;
+  const data = anime.data ?? fallback;
 
-  // A saved copy (or the library's) is shown even when refreshing it failed, e.g. offline.
-  if (anime.data !== undefined) {
-    return <Detail anime={anime.data} />;
+  // A saved copy is shown even when refreshing it failed, e.g. offline.
+  if (data !== undefined) {
+    return <Detail anime={data} />;
   }
   if (anime.isPending) {
     return <Loading />;

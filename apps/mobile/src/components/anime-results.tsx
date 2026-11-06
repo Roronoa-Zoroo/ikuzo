@@ -1,13 +1,14 @@
 import type { AnimeSummary, Paged } from "@ikuzo/anime/types";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import type { ReactElement } from "react";
-import { ActivityIndicator, FlatList, StyleSheet } from "react-native";
+import { ActivityIndicator } from "react-native";
 
 import { openAnime } from "@/lib/nav";
 import { animeKey, useEntryLookup } from "@/lib/store";
-import { colors, spacing } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 import { AnimeRow } from "./anime-row";
+import { RowList } from "./row-list";
 import { EmptyState, ErrorState, Loading } from "./states";
 
 interface AnimeResultsProps {
@@ -15,10 +16,6 @@ interface AnimeResultsProps {
   header?: ReactElement;
   emptyTitle?: string;
 }
-
-const styles = StyleSheet.create({
-  list: { flexGrow: 1, gap: spacing.md, paddingBottom: spacing.xl },
-});
 
 /** Infinite list of anime rows for search, seasonal and browse screens. */
 export const AnimeResults = ({ query, header, emptyTitle = "No results" }: AnimeResultsProps) => {
@@ -57,13 +54,10 @@ export const AnimeResults = ({ query, header, emptyTitle = "No results" }: Anime
     });
 
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
+    <RowList
       data={items}
+      empty={query.data === undefined ? undefined : <EmptyState icon="search-outline" title={emptyTitle} />}
       keyExtractor={animeKey}
-      ListEmptyComponent={
-        query.data === undefined ? undefined : <EmptyState icon="search-outline" title={emptyTitle} />
-      }
       ListFooterComponent={query.isFetchingNextPage ? <ActivityIndicator color={colors.accent} /> : undefined}
       ListHeaderComponent={header}
       onEndReached={() => {

@@ -3,7 +3,6 @@ import type { AnimeSummary } from "@ikuzo/anime/types";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { formatDateRange } from "@/lib/format";
 import { duration } from "@/lib/motion";
@@ -89,63 +88,67 @@ export const AnimeRow = ({
   const dates = formatDateRange(anime.airedFrom, anime.airedTo, anime.status);
 
   return (
-    // Rows fade in and out like RecyclerView's default item animator (120 ms).
-    <Animated.View entering={FadeIn.duration(duration.itemFade)} exiting={FadeOut.duration(duration.itemFade)}>
-      <Touchable accessibilityRole="button" onPress={onPress} scaleOnPress style={styles.card}>
-        <View style={styles.poster}>
-          <Image contentFit="cover" source={anime.image} style={styles.posterImage} transition={duration.image} />
-          {posterLabel === undefined ? null : (
-            <View style={styles.posterLabel}>
-              <AppText style={styles.posterLabelText}>{posterLabel}</AppText>
-            </View>
-          )}
-        </View>
-        <View style={styles.body}>
-          <View style={styles.titleRow}>
-            <View style={styles.titleBlock}>
-              <AppText numberOfLines={titleLines} style={styles.title}>
-                {displayTitle(anime, language)}
-              </AppText>
-              {dates === undefined ? null : (
-                <AppText numberOfLines={1} style={styles.date}>
-                  {dates}
-                </AppText>
-              )}
-            </View>
-            {onMore === undefined ? null : (
-              <Touchable
-                accessibilityLabel="More options"
-                accessibilityRole="button"
-                borderless
-                hitSlop={10}
-                onPress={onMore}
-                style={styles.more}
-              >
-                <MaterialCommunityIcons color={colors.text} name="dots-vertical" size={22} />
-              </Touchable>
-            )}
-            {trailing}
+    // No mount animation: rows are recycled while scrolling, so one would replay on every scroll.
+    <Touchable accessibilityRole="button" onPress={onPress} scaleOnPress style={styles.card}>
+      <View style={styles.poster}>
+        <Image
+          contentFit="cover"
+          recyclingKey={anime.image}
+          source={anime.image}
+          style={styles.posterImage}
+          transition={duration.image}
+        />
+        {posterLabel === undefined ? null : (
+          <View style={styles.posterLabel}>
+            <AppText style={styles.posterLabelText}>{posterLabel}</AppText>
           </View>
-          <View style={styles.spacer} />
-          <View style={styles.footer}>
-            {footer ?? (
-              <AppText style={styles.footerText}>
-                {progress === undefined
-                  ? [anime.format, total === null ? undefined : `${total} eps`, anime.score?.toFixed(1)]
-                      .filter(Boolean)
-                      .join(" · ")
-                  : `${progress}/${total ?? "?"}`}
+        )}
+      </View>
+      <View style={styles.body}>
+        <View style={styles.titleRow}>
+          <View style={styles.titleBlock}>
+            <AppText numberOfLines={titleLines} style={styles.title}>
+              {displayTitle(anime, language)}
+            </AppText>
+            {dates === undefined ? null : (
+              <AppText numberOfLines={1} style={styles.date}>
+                {dates}
               </AppText>
             )}
-            {showStatus ? <StatusBadge status={anime.status} /> : null}
           </View>
-          {progress === undefined ? null : (
-            <View style={styles.progress}>
-              <ProgressBar ratio={ratio} />
-            </View>
+          {onMore === undefined ? null : (
+            <Touchable
+              accessibilityLabel="More options"
+              accessibilityRole="button"
+              borderless
+              hitSlop={10}
+              onPress={onMore}
+              style={styles.more}
+            >
+              <MaterialCommunityIcons color={colors.text} name="dots-vertical" size={22} />
+            </Touchable>
           )}
+          {trailing}
         </View>
-      </Touchable>
-    </Animated.View>
+        <View style={styles.spacer} />
+        <View style={styles.footer}>
+          {footer ?? (
+            <AppText style={styles.footerText}>
+              {progress === undefined
+                ? [anime.format, total === null ? undefined : `${total} eps`, anime.score?.toFixed(1)]
+                    .filter(Boolean)
+                    .join(" · ")
+                : `${progress}/${total ?? "?"}`}
+            </AppText>
+          )}
+          {showStatus ? <StatusBadge status={anime.status} /> : null}
+        </View>
+        {progress === undefined ? null : (
+          <View style={styles.progress}>
+            <ProgressBar id={`${anime.source}:${anime.id}`} ratio={ratio} />
+          </View>
+        )}
+      </View>
+    </Touchable>
   );
 };

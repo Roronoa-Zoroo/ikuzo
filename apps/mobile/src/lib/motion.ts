@@ -1,8 +1,8 @@
 import { Easing } from "react-native-reanimated";
 
 /*
- * Motion tokens, measured from the original anYme app's animation resources
- * (see docs/motion.md). Android's Overshoot/Anticipate interpolators with
+ * Motion tokens, based on the original anYme app's animation resources (see docs/motion.md),
+ * with the long ones shortened: at anYme's lengths the app felt slow to respond. Android's Overshoot/Anticipate interpolators with
  * tension T are exactly Reanimated's Easing.out(Easing.back(T)) / Easing.back(T).
  */
 const TENSION = 0.8;
@@ -10,8 +10,8 @@ const TENSION = 0.8;
 export const duration = {
   /** Favourite heart bounce (MaterialFavoriteButton default) */
   bounce: 300,
-  /** Switching bottom tabs (xfade_in / xfade_out) */
-  crossfade: 400,
+  /** Switching bottom tabs (anYme's xfade was 400 ms) */
+  crossfade: 180,
   /** Images fading in once loaded */
   image: 250,
   /** List item add/remove (RecyclerView DefaultItemAnimator) */
@@ -25,13 +25,13 @@ export const duration = {
   /** Pressed state of cards and buttons (mtrl_card_anim_duration_ms) */
   press: 120,
   /** Bottom sheets: the same overshoot curve, shortened so a sheet feels responsive */
-  sheetIn: 450,
+  sheetIn: 300,
   /** Bottom sheets leaving: anticipate curve */
-  sheetOut: 300,
-  /** Slide-in bars and sheets (slide_in_from_bottom / _top) */
-  slideIn: 700,
-  /** Slide-out bars and sheets (slide_out_to_bottom) */
-  slideOut: 500,
+  sheetOut: 200,
+  /** Slide-in bars (anYme's slide_in_from_bottom was 700 ms) */
+  slideIn: 320,
+  /** Slide-out bars (anYme's slide_out_to_bottom was 500 ms) */
+  slideOut: 240,
   /** Tab underline sliding to the selected tab */
   tabIndicator: 250,
 } as const;
