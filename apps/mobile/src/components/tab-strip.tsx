@@ -84,7 +84,12 @@ export const TabStrip = <T extends string>({ tabs, value, onChange, position }: 
       return { opacity: 0 };
     }
     const at = position === undefined ? internal.value : position.value;
-    const steps = xs.value.map((_, step) => step);
+    // A plain loop, not .map(callback): the React Compiler moves inline callbacks out of the
+    // worklet into normal JS functions, which the UI thread cannot call (it crashed the app).
+    const steps: number[] = [];
+    for (let step = 0; step < count; step += 1) {
+      steps.push(step);
+    }
     const x = interpolate(
       at,
       steps.length > 1 ? steps : [0, 1],
