@@ -1,19 +1,19 @@
-import { eq, useLiveQuery } from "@tanstack/react-db";
 import { router } from "expo-router";
-import { FlatList, StyleSheet, View } from "react-native";
+import { useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
+import { RowList } from "@/components/row-list";
 import { EmptyState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
-import { entriesCollection } from "@/lib/db";
 import { watchNextEpisode } from "@/lib/episodes";
 import { openAnime } from "@/lib/nav";
+import { useEntries } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const styles = StyleSheet.create({
-  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   plus: {
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
@@ -25,13 +25,11 @@ const styles = StyleSheet.create({
 
 /** Shows you are watching, most recently touched first, with a one-tap +1. */
 const ContinueScreen = () => {
-  const { data: watching } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ entry: entriesCollection })
-        .where(({ entry }) => eq(entry.status, "watching"))
-        .orderBy(({ entry }) => entry.updatedAt, "desc"),
-  });
+  const entries = useEntries();
+  const watching = useMemo(
+    () => entries.filter((entry) => entry.status === "watching").toSorted((a, b) => b.updatedAt - a.updatedAt),
+    [entries]
+  );
 
   return (
     <View style={styles.screen}>
@@ -45,11 +43,10 @@ const ContinueScreen = () => {
         }}
         title="Continue watching"
       />
-      <FlatList
-        contentContainerStyle={styles.list}
+      <RowList
         data={watching}
         keyExtractor={(entry) => entry.key}
-        ListEmptyComponent={<EmptyState icon="play-outline" title="You are not watching anything" />}
+        empty={<EmptyState icon="play-outline" title="You are not watching anything" />}
         renderItem={({ item }) => (
           <AnimeRow
             anime={item.anime}

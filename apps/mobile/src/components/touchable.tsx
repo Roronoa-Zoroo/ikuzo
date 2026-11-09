@@ -15,18 +15,8 @@ interface TouchableProps extends Omit<PressableProps, "style"> {
   borderless?: boolean;
 }
 
-/**
- * Pressable with Android's native ripple (what anYme's Material cards used) and an
- * optional 120 ms press scale. The scale runs on the UI thread, so it never stutters.
- */
-export const Touchable = ({
-  style,
-  scaleOnPress = false,
-  borderless = false,
-  onPressIn,
-  onPressOut,
-  ...props
-}: TouchableProps) => {
+/** A card that shrinks a little while pressed (120 ms, on the UI thread so it never stutters). */
+const ScalingTouchable = ({ style, borderless = false, onPressIn, onPressOut, ...props }: TouchableProps) => {
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -34,19 +24,30 @@ export const Touchable = ({
     <AnimatedPressable
       android_ripple={{ borderless, color: colors.ripple, foreground: !borderless }}
       onPressIn={(event) => {
-        if (scaleOnPress) {
-          scale.set(withTiming(PRESSED_SCALE, { duration: duration.press, easing: easing.standard }));
-        }
+        scale.set(withTiming(PRESSED_SCALE, { duration: duration.press, easing: easing.standard }));
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
-        if (scaleOnPress) {
-          scale.set(withTiming(1, { duration: duration.press, easing: easing.standard }));
-        }
+        scale.set(withTiming(1, { duration: duration.press, easing: easing.standard }));
         onPressOut?.(event);
       }}
-      style={[style, scaleOnPress ? animatedStyle : null]}
+      style={[style, animatedStyle]}
       {...props}
     />
   );
 };
+
+/**
+ * Pressable with Android's native ripple (what anYme's Material cards used). Most buttons only
+ * ripple and are a plain Pressable; `scaleOnPress` adds the press animation for cards.
+ */
+export const Touchable = ({ scaleOnPress = false, borderless = false, style, ...props }: TouchableProps) =>
+  scaleOnPress ? (
+    <ScalingTouchable borderless={borderless} style={style} {...props} />
+  ) : (
+    <Pressable
+      android_ripple={{ borderless, color: colors.ripple, foreground: !borderless }}
+      style={style}
+      {...props}
+    />
+  );

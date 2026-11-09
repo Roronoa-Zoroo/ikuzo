@@ -1,7 +1,6 @@
 import { diffList, isEmptyChange } from "@ikuzo/anime/account-sync";
 import type { PullPlan } from "@ikuzo/anime/account-sync";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
-import { eq, or, useLiveQuery } from "@tanstack/react-db";
 import { useMemo, useSyncExternalStore } from "react";
 
 import {
@@ -26,7 +25,10 @@ import type {
   TitleLanguage,
   WatchStatus,
 } from "./library-types";
+import { createMirror, stripVirtual } from "./mirror";
 import { reportWriteError } from "./write-errors";
+
+export { stripVirtual } from "./mirror";
 
 export { WATCH_STATUS_LABELS, WATCH_STATUSES } from "./library-types";
 export type {
@@ -51,17 +53,6 @@ export const displayTitle = (anime: AnimeSummary, language: TitleLanguage): stri
   language === "english" ? (anime.titleEnglish ?? anime.title) : anime.title;
 
 type EntryLookup = Pick<AnimeSummary, "source" | "id" | "ids">;
-
-/** TanStack DB adds virtual `$…` fields to rows it returns; they must not be written back. */
-export const stripVirtual = <T extends object>(row: T): T => {
-  const copy = { ...row };
-  for (const name of Object.keys(copy)) {
-    if (name.startsWith("$")) {
-      Reflect.deleteProperty(copy, name);
-    }
-  }
-  return copy;
-};
 
 /**
  * Only the summary fields of a show. Detail screens pass the full AnimeDetail (synopsis,
@@ -125,181 +116,106 @@ export const entryKeyFor = (anime: EntryLookup): string => findEntry(anime)?.key
 
 export const getSettings = (): Settings => settingsCollection.get(SETTINGS_ID) ?? DEFAULT_SETTINGS;
 
-// ── Hooks (live queries) ────────────────────────────────────────────────────
+// ── Hooks ───────────────────────────────────────────────────────────────────
+// Every hook reads a shared in-memory mirror of its collection (see mirror.ts).
 
-export const useEntries = (): LibraryEntry[] => {
-  const { data } = useLiveQuery({ query: (q) => q.from({ entry: entriesCollection }) });
-  return data;
+const entries = createMirror(entriesCollection);
+const bookmarks = createMirror(bookmarksCollection);
+const favoriteShows = createMirror(favoriteShowsCollection);
+const favoriteCharacters = createMirror(favoriteCharactersCollection);
+const notes = createMirror(notesCollection);
+const settings = createMirror(settingsCollection);
+
+/**
+ * Called once the library has loaded from disk. Loading is not announced as changes, so screens
+ * that mounted earlier pick the rows up here.
+ */
+export const refreshLibraryViews = (): void => {
+  for (const mirror of [entries, bookmarks, favoriteShows, favoriteCharacters, notes, settings]) {
+    mirror.resync();
+  }
 };
 
 export type EntryLookupFn = (anime: EntryLookup) => LibraryEntry | undefined;
 
-/** One lookup for long lists (search results, bookmarks): built once per library change. */
-export const useEntryLookup = (): EntryLookupFn => {
-  const entries = useEntries();
-  return useMemo(() => {
-    const byKey = new Map<string, LibraryEntry>();
-    const byMal = new Map<number, LibraryEntry>();
-    const byAniList = new Map<number, LibraryEntry>();
-    for (const entry of entries) {
-      byKey.set(entry.key, entry);
-      if (entry.malId !== undefined) {
-        byMal.set(entry.malId, entry);
-      }
-      if (entry.anilistId !== undefined) {
-        byAniList.set(entry.anilistId, entry);
-      }
+/** Finds entries by key, MyAnimeList id or AniList id; rebuilt once per library change. */
+const entryLookup = entries.derive((rows): EntryLookupFn => {
+  const byMal = new Map<number, LibraryEntry>();
+  const byAniList = new Map<number, LibraryEntry>();
+  for (const entry of rows) {
+    if (entry.malId !== undefined) {
+      byMal.set(entry.malId, entry);
     }
-    return (anime) =>
-      byKey.get(animeKey(anime)) ??
-      (anime.ids.mal === undefined ? undefined : byMal.get(anime.ids.mal)) ??
-      (anime.ids.anilist === undefined ? undefined : byAniList.get(anime.ids.anilist));
-  }, [entries]);
-};
+    if (entry.anilistId !== undefined) {
+      byAniList.set(entry.anilistId, entry);
+    }
+  }
+  return (anime) =>
+    entries.get(animeKey(anime)) ??
+    (anime.ids.mal === undefined ? undefined : byMal.get(anime.ids.mal)) ??
+    (anime.ids.anilist === undefined ? undefined : byAniList.get(anime.ids.anilist));
+});
 
-/** The library entry for a show, matched across AniList and MyAnimeList ids (indexed lookup). */
-export const useEntry = (anime: EntryLookup): LibraryEntry | undefined => {
-  const key = animeKey(anime);
-  const { mal, anilist } = anime.ids;
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ entry: entriesCollection })
-        .where(({ entry }) => {
-          let match = eq(entry.key, key);
-          if (mal !== undefined) {
-            match = or(match, eq(entry.malId, mal));
-          }
-          if (anilist !== undefined) {
-            match = or(match, eq(entry.anilistId, anilist));
-          }
-          return match;
-        })
-        .findOne(),
-  });
-  return data;
-};
+export const useEntries = (): readonly LibraryEntry[] => useSyncExternalStore(entries.subscribe, entries.list);
+
+/** One lookup for long lists (search results, bookmarks). */
+export const useEntryLookup = (): EntryLookupFn => useSyncExternalStore(entries.subscribe, entryLookup);
 
 /**
- * Settings are read by every list row (title language), so they come from one shared
- * subscription instead of a live query per row: with hundreds of rows those queries made
- * scrolling stutter.
+ * The library entry for a show, matched across AniList and MyAnimeList ids. Re-renders only
+ * when that entry changes, not when any other show does.
  */
-let settingsSnapshot: Settings | undefined;
-const settingsListeners = new Set<() => void>();
-let settingsSubscription: { unsubscribe: () => void } | undefined;
+export const useEntry = (anime: EntryLookup): LibraryEntry | undefined =>
+  useSyncExternalStore(entries.subscribe, () => entryLookup()(anime));
 
-const subscribeSettings = (onChange: () => void): (() => void) => {
-  settingsListeners.add(onChange);
-  settingsSubscription ??= settingsCollection.subscribeChanges(() => {
-    settingsSnapshot = undefined;
-    for (const listener of settingsListeners) {
-      listener();
-    }
-  });
-  return () => {
-    settingsListeners.delete(onChange);
-    if (settingsListeners.size === 0) {
-      settingsSubscription?.unsubscribe();
-      settingsSubscription = undefined;
-      settingsSnapshot = undefined;
-    }
-  };
-};
+const readSettings = (): Settings => settings.get(SETTINGS_ID) ?? DEFAULT_SETTINGS;
 
-const readSettings = (): Settings => {
-  // Cached only while subscribed: without a subscription a change would not clear the cache.
-  if (settingsSubscription === undefined) {
-    return getSettings();
-  }
-  settingsSnapshot ??= getSettings();
-  return settingsSnapshot;
-};
+export const useSettings = (): Settings => useSyncExternalStore(settings.subscribe, readSettings);
 
-export const useSettings = (): Settings => useSyncExternalStore(subscribeSettings, readSettings, readSettings);
+const newestFirst = <T extends { addedAt: number }>(rows: readonly T[]): readonly T[] =>
+  rows.toSorted((a, b) => b.addedAt - a.addedAt);
+
+const bookmarkList = bookmarks.derive(newestFirst);
+const favoriteShowList = favoriteShows.derive(newestFirst);
+const favoriteCharacterList = favoriteCharacters.derive(newestFirst);
 
 /** Bookmarks, newest first. */
-export const useBookmarks = (): SavedAnime[] => {
-  const { data } = useLiveQuery({
-    query: (q) => q.from({ bookmark: bookmarksCollection }).orderBy(({ bookmark }) => bookmark.addedAt, "desc"),
-  });
-  return data;
-};
+export const useBookmarks = (): readonly SavedAnime[] => useSyncExternalStore(bookmarks.subscribe, bookmarkList);
 
 /** Favourite shows, newest first. */
-export const useFavoriteShows = (): SavedAnime[] => {
-  const { data } = useLiveQuery({
-    query: (q) => q.from({ favorite: favoriteShowsCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc"),
-  });
-  return data;
-};
+export const useFavoriteShows = (): readonly SavedAnime[] =>
+  useSyncExternalStore(favoriteShows.subscribe, favoriteShowList);
 
 /** Favourite characters, newest first. */
-export const useFavoriteCharacters = (): FavoriteCharacter[] => {
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q.from({ favorite: favoriteCharactersCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc"),
-  });
-  return data;
-};
+export const useFavoriteCharacters = (): readonly FavoriteCharacter[] =>
+  useSyncExternalStore(favoriteCharacters.subscribe, favoriteCharacterList);
 
-export const useIsBookmarked = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
-  const key = animeKey(anime);
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ bookmark: bookmarksCollection })
-        .where(({ bookmark }) => eq(bookmark.key, key))
-        .findOne(),
-  });
-  return data !== undefined;
-};
+export const useIsBookmarked = (anime: Pick<AnimeSummary, "source" | "id">): boolean =>
+  useSyncExternalStore(bookmarks.subscribe, () => bookmarks.has(animeKey(anime)));
 
-export const useIsFavoriteShow = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
-  const key = animeKey(anime);
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ favorite: favoriteShowsCollection })
-        .where(({ favorite }) => eq(favorite.key, key))
-        .findOne(),
-  });
-  return data !== undefined;
-};
+export const useIsFavoriteShow = (anime: Pick<AnimeSummary, "source" | "id">): boolean =>
+  useSyncExternalStore(favoriteShows.subscribe, () => favoriteShows.has(animeKey(anime)));
 
-export const useIsFavoriteCharacter = (source: Source, id: number): boolean => {
-  const key = characterKey(source, id);
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ favorite: favoriteCharactersCollection })
-        .where(({ favorite }) => eq(favorite.key, key))
-        .findOne(),
-  });
-  return data !== undefined;
-};
+export const useIsFavoriteCharacter = (source: Source, id: number): boolean =>
+  useSyncExternalStore(favoriteCharacters.subscribe, () => favoriteCharacters.has(characterKey(source, id)));
 
 /** Notes about a show, newest first, matched across AniList and MyAnimeList ids. */
 export const useNotes = (anime: EntryLookup): Note[] => {
+  const all = useSyncExternalStore(notes.subscribe, notes.list);
   const key = animeKey(anime);
   const { mal, anilist } = anime.ids;
-  const { data } = useLiveQuery({
-    query: (q) =>
-      q
-        .from({ note: notesCollection })
-        .where(({ note }) => {
-          let match = eq(note.showKey, key);
-          if (mal !== undefined) {
-            match = or(match, eq(note.malId, mal));
-          }
-          if (anilist !== undefined) {
-            match = or(match, eq(note.anilistId, anilist));
-          }
-          return match;
-        })
-        .orderBy(({ note }) => note.createdAt, "desc"),
-  });
-  return data;
+  return useMemo(
+    () =>
+      all
+        .filter(
+          (note) =>
+            note.showKey === key ||
+            (mal !== undefined && note.malId === mal) ||
+            (anilist !== undefined && note.anilistId === anilist)
+        )
+        .toSorted((a, b) => b.createdAt - a.createdAt),
+    [all, anilist, key, mal]
+  );
 };
 
 // ── Writing ────────────────────────────────────────────────────────────────
@@ -450,12 +366,29 @@ const restoreEntry = (entry: LibraryEntry): void => {
 
 /** Newer show data (episode counts, air dates) for entries; list values are untouched and nothing syncs. */
 const refreshSnapshots = (shows: AnimeSummary[]): void => {
+  const fresh = new Map<string, AnimeSummary>();
   for (const anime of shows) {
     const entry = findEntry(anime);
     if (entry !== undefined) {
-      afterWrite(writeEntry(entry.key, { ...entry, anime: mergeSnapshot(entry.anime, anime) }));
+      fresh.set(entry.key, mergeSnapshot(entry.anime, anime));
     }
   }
+  if (fresh.size === 0) {
+    return;
+  }
+  // One write for all of them: screens update once instead of once per show.
+  afterWrite(
+    entriesCollection.update([...fresh.keys()], (drafts) => {
+      for (const draft of drafts) {
+        const anime = fresh.get(draft.key);
+        if (anime !== undefined) {
+          draft.anime = anime;
+          draft.malId = anime.ids.mal;
+          draft.anilistId = anime.ids.anilist;
+        }
+      }
+    })
+  );
 };
 
 /**

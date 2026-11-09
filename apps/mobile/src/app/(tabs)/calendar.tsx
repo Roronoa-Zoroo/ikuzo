@@ -1,12 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { estimateNextEpisode, formatCountdown } from "@ikuzo/anime/airing";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { useMemo, useState } from "react";
-import { Alert, FlatList, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
 import { PagerTabs } from "@/components/pager-tabs";
+import { RowList } from "@/components/row-list";
 import { useSideMenu } from "@/components/side-menu";
 import { EmptyState, ErrorState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
@@ -34,7 +35,6 @@ const CALENDAR_TABS: { key: CalendarTab; label: string }[] = [
 
 const styles = StyleSheet.create({
   footer: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "space-between" },
-  list: { flexGrow: 1, gap: 10, paddingVertical: 10 },
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 
@@ -89,11 +89,10 @@ const MyShows = () => {
   // (offline, the saved times stay).
   const items = airing.data.filter((item) => !hideUpcoming || item.entry.anime.status === "airing");
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
+    <RowList
       data={items}
       keyExtractor={(item) => item.entry.key}
-      ListEmptyComponent={
+      empty={
         <EmptyState
           icon="calendar-outline"
           message="Airing shows in your Watching, Plan to watch and On hold lists appear here."
@@ -149,11 +148,10 @@ const DaySchedule = ({ day }: { day: number }) => {
     );
   }
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
+    <RowList
       data={rows}
       keyExtractor={(row) => animeKey(row.anime)}
-      ListEmptyComponent={<EmptyState icon="moon-outline" title="Nothing scheduled" />}
+      empty={<EmptyState icon="moon-outline" title="Nothing scheduled" />}
       onRefresh={() => {
         void schedule.refetch();
       }}

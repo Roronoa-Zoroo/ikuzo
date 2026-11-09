@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const computeStats = (entries: LibraryEntry[]) => {
+const computeStats = (entries: readonly LibraryEntry[]) => {
   const byStatus: Record<WatchStatus, number> = { completed: 0, dropped: 0, onHold: 0, planned: 0, watching: 0 };
   const scores = new Map<number, number>();
   const genres = new Map<string, number>();

@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
 
@@ -39,6 +39,8 @@ const TabsLayout = () => (
       screenOptions={{
         // anYme cross-faded between bottom tabs over 400 ms (xfade_in / xfade_out).
         animation: "fade",
+        // Tabs you are not looking at stop re-rendering until you come back to them.
+        freezeOnBlur: true,
         headerShown: false,
         sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.accent,

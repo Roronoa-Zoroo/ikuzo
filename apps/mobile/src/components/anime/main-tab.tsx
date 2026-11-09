@@ -1,4 +1,5 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { broadcastInLocalTime, estimateNextEpisode, formatCountdown } from "@ikuzo/anime/airing";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import type { AnimeDetail } from "@ikuzo/anime/types";

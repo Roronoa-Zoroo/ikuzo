@@ -2,23 +2,23 @@ import type { AnimeSummary } from "@ikuzo/anime/types";
 import { useQueries } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
+import { RowList } from "@/components/row-list";
 import { EmptyState, Loading } from "@/components/states";
 import { AppText } from "@/components/text";
 import { openAnime } from "@/lib/nav";
 import { getProvider } from "@/lib/sources";
 import { animeKey, useEntries, useEntryLookup } from "@/lib/store";
-import { colors, spacing } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 /** How many favourite shows seed the recommendations. */
 const SEEDS = 6;
 
 const styles = StyleSheet.create({
   because: { flex: 1 },
-  list: { gap: spacing.md, paddingVertical: spacing.md },
   screen: { backgroundColor: colors.background, flex: 1 },
 });
 
@@ -84,8 +84,7 @@ const RecommendationsScreen = () => {
         />
       ) : null}
       {seeds.length > 0 && pending && ranked.length === 0 ? <Loading /> : null}
-      <FlatList
-        contentContainerStyle={styles.list}
+      <RowList
         data={ranked}
         keyExtractor={(item) => animeKey(item.anime)}
         renderItem={({ item }) => (

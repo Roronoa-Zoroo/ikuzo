@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { StyleSheet, View } from "react-native";
@@ -63,6 +63,8 @@ export const PosterTile = ({ title, subtitle, image, onPress, width = DEFAULT_WI
   <Touchable accessibilityLabel={title} accessibilityRole="button" onPress={onPress} scaleOnPress style={{ width }}>
     <View>
       <Image
+        // Kept in memory as well as on disk, so a poster scrolled back into view shows at once.
+        cachePolicy="memory-disk"
         contentFit="cover"
         source={image}
         style={[styles.image, { height: width * ASPECT_RATIO, width }]}

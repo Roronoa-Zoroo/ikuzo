@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { AnimeDetail } from "@ikuzo/anime/types";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import * as Clipboard from "expo-clipboard";

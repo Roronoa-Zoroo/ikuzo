@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { BrowseList } from "@ikuzo/anime/types";
 import { SOURCE_LABELS } from "@ikuzo/anime/types";
 import { useMutation } from "@tanstack/react-query";

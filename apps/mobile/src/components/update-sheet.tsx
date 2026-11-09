@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { useState } from "react";
 import { ScrollView, StyleSheet, TextInput, View } from "react-native";

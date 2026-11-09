@@ -16,7 +16,7 @@ import { openAnime } from "@/lib/nav";
 import { handleNotificationTaps, setupNotifications, syncReminders } from "@/lib/notifications";
 import type { Reminder } from "@/lib/notifications";
 import { queryClient, useLibraryAiring } from "@/lib/queries";
-import { displayTitle, getEntry, useSettings } from "@/lib/store";
+import { displayTitle, getEntry, refreshLibraryViews, useSettings } from "@/lib/store";
 import { pullQuietly, startSyncWatcher, syncOnForeground } from "@/lib/sync";
 import { colors } from "@/lib/theme";
 
@@ -130,6 +130,7 @@ const RootLayout = () => {
       let next: LoadState = "ready";
       try {
         await whenLibraryReady();
+        refreshLibraryViews();
       } catch {
         next = "failed";
       }
@@ -163,6 +164,8 @@ const RootLayout = () => {
             // Android draws edge to edge: this keeps every screen (the tab bar, the last row of a
             // list) above the phone's navigation bar instead of under it.
             contentStyle: { backgroundColor: colors.background, paddingBottom: insets.bottom },
+            // Screens underneath the one you are looking at stop re-rendering until you come back.
+            freezeOnBlur: true,
             headerShown: false,
           }}
         />

@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { AnimeSummary } from "@ikuzo/anime/types";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
@@ -92,6 +92,8 @@ export const AnimeRow = ({
     <Touchable accessibilityRole="button" onPress={onPress} scaleOnPress style={styles.card}>
       <View style={styles.poster}>
         <Image
+          // Kept in memory as well as on disk, so a poster scrolled back into view shows at once.
+          cachePolicy="memory-disk"
           contentFit="cover"
           recyclingKey={anime.image}
           source={anime.image}
