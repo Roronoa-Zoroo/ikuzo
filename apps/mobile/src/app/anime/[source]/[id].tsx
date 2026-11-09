@@ -36,6 +36,7 @@ import { duration } from "@/lib/motion";
 import { previewDetail, useAnime } from "@/lib/queries";
 import { isSource } from "@/lib/sources";
 import { displayTitle, library, useEntry, useIsBookmarked, useIsFavoriteShow, useSettings } from "@/lib/store";
+import type { LibraryEntry } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 type DetailTab = "main" | "episodes" | "notes" | "reviews" | "stats" | "songs";
@@ -119,9 +120,13 @@ const showSynonyms = (anime: AnimeDetail) => {
   Alert.alert("Also known as", [...new Set(names)].join("\n"));
 };
 
-const useOptions = (anime: AnimeDetail, title: string): OptionItem[] => {
-  const entry = useEntry(anime);
-  const bookmarked = useIsBookmarked(anime);
+/** What the library knows about the show on screen, read once here and passed down as props. */
+interface ShowState {
+  entry: LibraryEntry | undefined;
+  bookmarked: boolean;
+}
+
+const useOptions = (anime: AnimeDetail, title: string, { entry, bookmarked }: ShowState): OptionItem[] => {
   const favorite = useIsFavoriteShow(anime);
   const inList = entry !== undefined;
 
@@ -196,7 +201,10 @@ const Detail = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) =>
   const [tabsTop, setTabsTop] = useState(BANNER_HEIGHT + POSTER_HEIGHT / 2);
   const [tabsHeight, setTabsHeight] = useState(0);
   const title = displayTitle(anime, language);
-  const options = useOptions(anime, title);
+  // One query each for the whole page: the tabs get the results as props instead of asking again.
+  const entry = useEntry(anime);
+  const bookmarked = useIsBookmarked(anime);
+  const options = useOptions(anime, title, { bookmarked, entry });
   const barHeight = insets.top + BAR_HEIGHT;
   const scrollY = useSharedValue(0);
   const dragX = useSharedValue(0);
@@ -362,9 +370,9 @@ const Detail = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) =>
             key={tab}
             style={styles.page}
           >
-            {tab === "main" ? <MainTab anime={anime} partial={partial} /> : null}
+            {tab === "main" ? <MainTab anime={anime} bookmarked={bookmarked} entry={entry} partial={partial} /> : null}
             {tab === "episodes" ? <EpisodesTab anime={anime} /> : null}
-            {tab === "notes" ? <NotesTab anime={anime} /> : null}
+            {tab === "notes" ? <NotesTab anime={anime} entry={entry} /> : null}
             {tab === "reviews" ? <ReviewsTab anime={anime} /> : null}
             {tab === "stats" ? <StatsTab anime={anime} /> : null}
             {tab === "songs" ? <SongsTab anime={anime} /> : null}

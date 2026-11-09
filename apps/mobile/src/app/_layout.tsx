@@ -16,7 +16,7 @@ import { openAnime } from "@/lib/nav";
 import { handleNotificationTaps, setupNotifications, syncReminders } from "@/lib/notifications";
 import type { Reminder } from "@/lib/notifications";
 import { queryClient, useLibraryAiring } from "@/lib/queries";
-import { displayTitle, getEntry, refreshLibraryViews, useSettings } from "@/lib/store";
+import { displayTitle, getEntry, useSettings } from "@/lib/store";
 import { pullQuietly, startSyncWatcher, syncOnForeground } from "@/lib/sync";
 import { colors } from "@/lib/theme";
 
@@ -130,7 +130,6 @@ const RootLayout = () => {
       let next: LoadState = "ready";
       try {
         await whenLibraryReady();
-        refreshLibraryViews();
       } catch {
         next = "failed";
       }

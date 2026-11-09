@@ -1,7 +1,8 @@
 import { diffList, isEmptyChange } from "@ikuzo/anime/account-sync";
 import type { PullPlan } from "@ikuzo/anime/account-sync";
 import type { AnimeSummary, CharacterRole, Source } from "@ikuzo/anime/types";
-import { useMemo, useSyncExternalStore } from "react";
+import { createLiveQueryCollection, eq, or, useLiveQuery } from "@tanstack/react-db";
+import { useMemo } from "react";
 
 import {
   bookmarksCollection,
@@ -25,10 +26,7 @@ import type {
   TitleLanguage,
   WatchStatus,
 } from "./library-types";
-import { createMirror, stripVirtual } from "./mirror";
 import { reportWriteError } from "./write-errors";
-
-export { stripVirtual } from "./mirror";
 
 export { WATCH_STATUS_LABELS, WATCH_STATUSES } from "./library-types";
 export type {
@@ -53,6 +51,17 @@ export const displayTitle = (anime: AnimeSummary, language: TitleLanguage): stri
   language === "english" ? (anime.titleEnglish ?? anime.title) : anime.title;
 
 type EntryLookup = Pick<AnimeSummary, "source" | "id" | "ids">;
+
+/** TanStack DB adds virtual `$…` fields to rows it returns; they must not be written back. */
+export const stripVirtual = <T extends object>(row: T): T => {
+  const copy = { ...row };
+  for (const name of Object.keys(copy)) {
+    if (name.startsWith("$")) {
+      Reflect.deleteProperty(copy, name);
+    }
+  }
+  return copy;
+};
 
 /**
  * Only the summary fields of a show. Detail screens pass the full AnimeDetail (synopsis,
@@ -116,106 +125,155 @@ export const entryKeyFor = (anime: EntryLookup): string => findEntry(anime)?.key
 
 export const getSettings = (): Settings => settingsCollection.get(SETTINGS_ID) ?? DEFAULT_SETTINGS;
 
-// ── Hooks ───────────────────────────────────────────────────────────────────
-// Every hook reads a shared in-memory mirror of its collection (see mirror.ts).
+// ── Hooks (live queries) ────────────────────────────────────────────────────
+//
+// How this file uses TanStack DB:
+//
+// 1. useLiveQuery(collection) reads a whole collection. It subscribes to the collection
+//    itself, so it costs nothing to start and every screen shares the same rows.
+// 2. A query that several screens need (bookmarks, newest first) is created once with
+//    createLiveQueryCollection and that one collection is passed to useLiveQuery. Writing
+//    the same query inline in two components would run it twice: each inline query gets
+//    its own result collection.
+// 3. Inline queries are for results only one component needs, and they stay narrow
+//    (one show's entry, one show's notes).
 
-const entries = createMirror(entriesCollection);
-const bookmarks = createMirror(bookmarksCollection);
-const favoriteShows = createMirror(favoriteShowsCollection);
-const favoriteCharacters = createMirror(favoriteCharactersCollection);
-const notes = createMirror(notesCollection);
-const settings = createMirror(settingsCollection);
+/** Bookmarks, newest first: one shared query for every screen that lists them. */
+const bookmarksNewestFirst = createLiveQueryCollection((q) =>
+  q.from({ bookmark: bookmarksCollection }).orderBy(({ bookmark }) => bookmark.addedAt, "desc")
+);
 
-/**
- * Called once the library has loaded from disk. Loading is not announced as changes, so screens
- * that mounted earlier pick the rows up here.
- */
-export const refreshLibraryViews = (): void => {
-  for (const mirror of [entries, bookmarks, favoriteShows, favoriteCharacters, notes, settings]) {
-    mirror.resync();
-  }
-};
+const favoriteShowsNewestFirst = createLiveQueryCollection((q) =>
+  q.from({ favorite: favoriteShowsCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc")
+);
+
+const favoriteCharactersNewestFirst = createLiveQueryCollection((q) =>
+  q.from({ favorite: favoriteCharactersCollection }).orderBy(({ favorite }) => favorite.addedAt, "desc")
+);
+
+/** Every show in the library. Screens filter and sort this themselves (Home, Stats). */
+export const useEntries = (): LibraryEntry[] => useLiveQuery(entriesCollection).data;
 
 export type EntryLookupFn = (anime: EntryLookup) => LibraryEntry | undefined;
 
-/** Finds entries by key, MyAnimeList id or AniList id; rebuilt once per library change. */
-const entryLookup = entries.derive((rows): EntryLookupFn => {
-  const byMal = new Map<number, LibraryEntry>();
-  const byAniList = new Map<number, LibraryEntry>();
-  for (const entry of rows) {
-    if (entry.malId !== undefined) {
-      byMal.set(entry.malId, entry);
+/**
+ * Finds the library entry of any show, for long lists (search results, bookmarks): one pass
+ * over the library per change instead of a query per row.
+ */
+export const useEntryLookup = (): EntryLookupFn => {
+  const entries = useEntries();
+  return useMemo(() => {
+    const byKey = new Map<string, LibraryEntry>();
+    const byMal = new Map<number, LibraryEntry>();
+    const byAniList = new Map<number, LibraryEntry>();
+    for (const entry of entries) {
+      byKey.set(entry.key, entry);
+      if (entry.malId !== undefined) {
+        byMal.set(entry.malId, entry);
+      }
+      if (entry.anilistId !== undefined) {
+        byAniList.set(entry.anilistId, entry);
+      }
     }
-    if (entry.anilistId !== undefined) {
-      byAniList.set(entry.anilistId, entry);
-    }
-  }
-  return (anime) =>
-    entries.get(animeKey(anime)) ??
-    (anime.ids.mal === undefined ? undefined : byMal.get(anime.ids.mal)) ??
-    (anime.ids.anilist === undefined ? undefined : byAniList.get(anime.ids.anilist));
-});
-
-export const useEntries = (): readonly LibraryEntry[] => useSyncExternalStore(entries.subscribe, entries.list);
-
-/** One lookup for long lists (search results, bookmarks). */
-export const useEntryLookup = (): EntryLookupFn => useSyncExternalStore(entries.subscribe, entryLookup);
+    return (anime) =>
+      byKey.get(animeKey(anime)) ??
+      (anime.ids.mal === undefined ? undefined : byMal.get(anime.ids.mal)) ??
+      (anime.ids.anilist === undefined ? undefined : byAniList.get(anime.ids.anilist));
+  }, [entries]);
+};
 
 /**
- * The library entry for a show, matched across AniList and MyAnimeList ids. Re-renders only
- * when that entry changes, not when any other show does.
+ * The library entry for one show, matched across AniList and MyAnimeList ids. A narrow query:
+ * the component re-renders when this entry changes, not when any other show does.
  */
-export const useEntry = (anime: EntryLookup): LibraryEntry | undefined =>
-  useSyncExternalStore(entries.subscribe, () => entryLookup()(anime));
+export const useEntry = (anime: EntryLookup): LibraryEntry | undefined => {
+  const key = animeKey(anime);
+  const { mal, anilist } = anime.ids;
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ entry: entriesCollection })
+        .where(({ entry }) => {
+          let match = eq(entry.key, key);
+          if (mal !== undefined) {
+            match = or(match, eq(entry.malId, mal));
+          }
+          if (anilist !== undefined) {
+            match = or(match, eq(entry.anilistId, anilist));
+          }
+          return match;
+        })
+        .findOne(),
+  });
+  return data;
+};
 
-const readSettings = (): Settings => settings.get(SETTINGS_ID) ?? DEFAULT_SETTINGS;
+/** Settings are a collection with a single row. */
+export const useSettings = (): Settings => useLiveQuery(settingsCollection).data[0] ?? DEFAULT_SETTINGS;
 
-export const useSettings = (): Settings => useSyncExternalStore(settings.subscribe, readSettings);
+export const useBookmarks = (): SavedAnime[] => useLiveQuery(bookmarksNewestFirst).data;
 
-const newestFirst = <T extends { addedAt: number }>(rows: readonly T[]): readonly T[] =>
-  rows.toSorted((a, b) => b.addedAt - a.addedAt);
+export const useFavoriteShows = (): SavedAnime[] => useLiveQuery(favoriteShowsNewestFirst).data;
 
-const bookmarkList = bookmarks.derive(newestFirst);
-const favoriteShowList = favoriteShows.derive(newestFirst);
-const favoriteCharacterList = favoriteCharacters.derive(newestFirst);
+export const useFavoriteCharacters = (): FavoriteCharacter[] => useLiveQuery(favoriteCharactersNewestFirst).data;
 
-/** Bookmarks, newest first. */
-export const useBookmarks = (): readonly SavedAnime[] => useSyncExternalStore(bookmarks.subscribe, bookmarkList);
+export const useIsBookmarked = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
+  const key = animeKey(anime);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ bookmark: bookmarksCollection })
+        .where(({ bookmark }) => eq(bookmark.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
 
-/** Favourite shows, newest first. */
-export const useFavoriteShows = (): readonly SavedAnime[] =>
-  useSyncExternalStore(favoriteShows.subscribe, favoriteShowList);
+export const useIsFavoriteShow = (anime: Pick<AnimeSummary, "source" | "id">): boolean => {
+  const key = animeKey(anime);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ favorite: favoriteShowsCollection })
+        .where(({ favorite }) => eq(favorite.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
 
-/** Favourite characters, newest first. */
-export const useFavoriteCharacters = (): readonly FavoriteCharacter[] =>
-  useSyncExternalStore(favoriteCharacters.subscribe, favoriteCharacterList);
-
-export const useIsBookmarked = (anime: Pick<AnimeSummary, "source" | "id">): boolean =>
-  useSyncExternalStore(bookmarks.subscribe, () => bookmarks.has(animeKey(anime)));
-
-export const useIsFavoriteShow = (anime: Pick<AnimeSummary, "source" | "id">): boolean =>
-  useSyncExternalStore(favoriteShows.subscribe, () => favoriteShows.has(animeKey(anime)));
-
-export const useIsFavoriteCharacter = (source: Source, id: number): boolean =>
-  useSyncExternalStore(favoriteCharacters.subscribe, () => favoriteCharacters.has(characterKey(source, id)));
+export const useIsFavoriteCharacter = (source: Source, id: number): boolean => {
+  const key = characterKey(source, id);
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ favorite: favoriteCharactersCollection })
+        .where(({ favorite }) => eq(favorite.key, key))
+        .findOne(),
+  });
+  return data !== undefined;
+};
 
 /** Notes about a show, newest first, matched across AniList and MyAnimeList ids. */
 export const useNotes = (anime: EntryLookup): Note[] => {
-  const all = useSyncExternalStore(notes.subscribe, notes.list);
   const key = animeKey(anime);
   const { mal, anilist } = anime.ids;
-  return useMemo(
-    () =>
-      all
-        .filter(
-          (note) =>
-            note.showKey === key ||
-            (mal !== undefined && note.malId === mal) ||
-            (anilist !== undefined && note.anilistId === anilist)
-        )
-        .toSorted((a, b) => b.createdAt - a.createdAt),
-    [all, anilist, key, mal]
-  );
+  const { data } = useLiveQuery({
+    query: (q) =>
+      q
+        .from({ note: notesCollection })
+        .where(({ note }) => {
+          let match = eq(note.showKey, key);
+          if (mal !== undefined) {
+            match = or(match, eq(note.malId, mal));
+          }
+          if (anilist !== undefined) {
+            match = or(match, eq(note.anilistId, anilist));
+          }
+          return match;
+        })
+        .orderBy(({ note }) => note.createdAt, "desc"),
+  });
+  return data;
 };
 
 // ── Writing ────────────────────────────────────────────────────────────────

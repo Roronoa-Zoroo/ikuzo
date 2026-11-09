@@ -59,6 +59,8 @@ Ikuzo then waits at least 2.5 seconds between AniDB requests and caches each sho
 | `packages/anime` | `@ikuzo/anime`: typed clients for MyAnimeList, Jikan, AniList and AniDB that return the same data shapes, plus ID mapping, airing-time maths and the sync planner (with unit tests) |
 | `packages/typescript-config` | Shared TypeScript config |
 
+New to Expo or TanStack DB? [docs/learn.md](docs/learn.md) walks through how the app is built and why.
+
 ## Development
 
 You need **Node 24+** and **pnpm** (`corepack enable`).

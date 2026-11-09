@@ -35,15 +35,15 @@ const POSTER_WIDTH = 90;
 const POSTER_HEIGHT = 110;
 
 const styles = StyleSheet.create({
-  // Measured from anYme's cardview_anime_main layout.
-  // The progress bar sits a little above the card's bottom edge, not on it.
-  body: { flex: 1, paddingBottom: 12, paddingLeft: 10, paddingRight: 4, paddingTop: 6 },
+  // Sizes are anYme's cardview_anime_main_optimized layout: 90×110 poster, 10dp corners, 5dp side
+  // margins, 17sp title, 13sp dates and progress.
+  body: { flex: 1, paddingBottom: 6, paddingLeft: 10, paddingRight: 4, paddingTop: 6 },
   card: {
     backgroundColor: colors.card,
     borderRadius: 10,
     elevation: 5,
     flexDirection: "row",
-    marginHorizontal: 8,
+    marginHorizontal: 5,
     overflow: "hidden",
   },
   date: { color: colors.text, fontSize: 13, fontWeight: "700", marginTop: 1 },
@@ -63,7 +63,9 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   posterLabelText: { fontSize: fontSize.sm, fontWeight: "700" },
-  progress: { marginTop: 6 },
+  // anYme's ProgressBar is an 18dp-tall view with the bar drawn in its middle, which is what
+  // leaves the gap between the bar and the bottom of the card.
+  progress: { height: 18, justifyContent: "center" },
   spacer: { flex: 1, minHeight: spacing.sm },
   title: { color: colors.textStrong, fontSize: 17, fontWeight: "700" },
   titleBlock: { flex: 1 },

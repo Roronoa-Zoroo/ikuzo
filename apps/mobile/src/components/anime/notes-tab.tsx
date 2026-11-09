@@ -7,7 +7,8 @@ import { Section } from "@/components/section";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { deleteNoteWithUndo } from "@/lib/episodes";
-import { library, useEntry, useNotes } from "@/lib/store";
+import { library, useNotes } from "@/lib/store";
+import type { LibraryEntry } from "@/lib/store";
 import { colors, fontSize, radius, spacing, fontFamily } from "@/lib/theme";
 
 const styles = StyleSheet.create({
@@ -35,8 +36,7 @@ const styles = StyleSheet.create({
 });
 
 /** Personal notes, optionally tied to an episode. */
-export const NotesTab = ({ anime }: { anime: AnimeDetail }) => {
-  const entry = useEntry(anime);
+export const NotesTab = ({ anime, entry }: { anime: AnimeDetail; entry: LibraryEntry | undefined }) => {
   const notes = useNotes(anime);
   const [text, setText] = useState("");
   const [episode, setEpisode] = useState(entry === undefined ? "" : String(entry.progress));

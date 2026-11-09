@@ -19,8 +19,8 @@ import { openLink, redditUrl } from "@/lib/links";
 import { openAnime, openCharacter, openCharacters } from "@/lib/nav";
 import { ensurePermission } from "@/lib/notifications";
 import { useCharacters, useRecommendations } from "@/lib/queries";
-import { animeKey, characterKey, library, useEntry, useFavoriteCharacters, useIsBookmarked } from "@/lib/store";
-import type { WatchStatus } from "@/lib/store";
+import { animeKey, characterKey, library, useFavoriteCharacters } from "@/lib/store";
+import type { LibraryEntry, WatchStatus } from "@/lib/store";
 import { colors, radius, spacing } from "@/lib/theme";
 import { useAfterTransition } from "@/lib/use-after-transition";
 import { useNow } from "@/lib/use-now";
@@ -114,10 +114,14 @@ const StatTile = ({
   </Touchable>
 );
 
-const ListControls = ({ anime }: { anime: AnimeDetail }) => {
-  const entry = useEntry(anime);
+interface ShowProps {
+  anime: AnimeDetail;
+  /** The show's library entry, read once by the screen. */
+  entry: LibraryEntry | undefined;
+}
+
+const ListControls = ({ anime, entry, bookmarked }: ShowProps & { bookmarked: boolean }) => {
   const key = entry?.key ?? animeKey(anime);
-  const bookmarked = useIsBookmarked(anime);
   const [editing, setEditing] = useState(false);
   const openEditor = () => {
     setEditing(true);
@@ -177,8 +181,8 @@ const ListControls = ({ anime }: { anime: AnimeDetail }) => {
   );
 };
 
-const NextEpisodeCard = ({ anime }: { anime: AnimeDetail }) => {
-  const notify = useEntry(anime)?.notify === true;
+const NextEpisodeCard = ({ anime, entry }: ShowProps) => {
+  const notify = entry?.notify === true;
   const now = useNow();
   const next = estimateNextEpisode(anime, now);
 
@@ -464,13 +468,18 @@ const LowerPlaceholder = () => (
   </Section>
 );
 
-export const MainTab = ({ anime, partial }: { anime: AnimeDetail; partial: boolean }) => {
+export const MainTab = ({
+  anime,
+  entry,
+  bookmarked,
+  partial,
+}: ShowProps & { bookmarked: boolean; partial: boolean }) => {
   // Carousels wait until the slide-in is over, so the animation is not competing with them.
   const settled = useAfterTransition();
   return (
     <View style={styles.tab}>
-      <ListControls anime={anime} />
-      <NextEpisodeCard anime={anime} />
+      <ListControls anime={anime} bookmarked={bookmarked} entry={entry} />
+      <NextEpisodeCard anime={anime} entry={entry} />
       <Info anime={anime} />
       {anime.genres.length === 0 ? null : (
         <Section title="Genres">
