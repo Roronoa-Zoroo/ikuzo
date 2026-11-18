@@ -67,3 +67,42 @@ export const SkeletonTiles = ({ width = 120 }: { width?: number }) => (
     ))}
   </ScrollView>
 );
+
+const listStyles = StyleSheet.create({
+  body: { flex: 1, gap: 6 },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    gap: spacing.md,
+    marginHorizontal: spacing.md,
+    padding: spacing.lg,
+  },
+  row: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+});
+
+/**
+ * A list card still loading (episodes): the same card, heading and rows as the real list, so
+ * when the data arrives the text appears in place instead of the layout jumping.
+ */
+export const SkeletonListCard = ({ rows = 6 }: { rows?: number }) => (
+  <View style={listStyles.card}>
+    <Skeleton height={22} width="45%" />
+    <View>
+      {Array.from({ length: rows }, (_, row) => (
+        <View key={row} style={listStyles.row}>
+          <Skeleton height={14} width={24} />
+          <View style={listStyles.body}>
+            <Skeleton height={14} width={row % 2 === 0 ? "75%" : "60%"} />
+            <Skeleton height={10} width="35%" />
+          </View>
+        </View>
+      ))}
+    </View>
+  </View>
+);

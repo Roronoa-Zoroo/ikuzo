@@ -2,6 +2,7 @@ import { AuthError } from "./auth-error";
 import { HttpError } from "./errors";
 import { createRateLimiter, fetchWithRetry, readJson } from "./http";
 import type {
+  Episode,
   AiringStatus,
   AnimeDetail,
   AnimeProvider,
@@ -315,6 +316,46 @@ export const aniListRequest = async <T>(
     return body.data;
   });
 
+/** AniList's airing schedule holds at most 50 episodes a page; 10 pages is plenty. */
+const SCHEDULE_PAGE_LIMIT = 10;
+/** Streaming links are titled "Episode 3 - The Title". */
+const STREAMING_TITLE = /^Episode (?<number>\d+)\s*[-–:]\s*(?<title>.+)$/u;
+
+interface EpisodePage {
+  Media: {
+    streamingEpisodes?: { title?: string | null }[] | null;
+    airingSchedule: { pageInfo: { hasNextPage: boolean }; nodes: { episode: number; airingAt: number }[] };
+  } | null;
+}
+
+/** Joins air dates (airing schedule) and titles (streaming links) by episode number. */
+export const mergeAniListEpisodes = (
+  schedule: readonly { episode: number; airingAt: number }[],
+  streaming: readonly { title?: string | null }[]
+): Episode[] => {
+  const byNumber = new Map<number, Episode>();
+  for (const { episode, airingAt } of schedule) {
+    byNumber.set(episode, {
+      airDate: new Date(airingAt * MS_PER_SECOND).toISOString().slice(0, "YYYY-MM-DD".length),
+      key: String(episode),
+      number: String(episode),
+    });
+  }
+  for (const link of streaming) {
+    const match = STREAMING_TITLE.exec(link.title ?? "");
+    if (match?.groups !== undefined) {
+      const number = Number(match.groups.number);
+      byNumber.set(number, {
+        key: String(number),
+        number: String(number),
+        ...byNumber.get(number),
+        title: match.groups.title,
+      });
+    }
+  }
+  return [...byNumber.values()].toSorted((a, b) => Number(a.number) - Number(b.number));
+};
+
 export type AniListClient = AnimeProvider & {
   /** Batch lookup by MyAnimeList id — used to get exact next-episode times for any show. */
   byMalIds: (malIds: number[]) => Promise<AnimeSummary[]>;
@@ -460,6 +501,29 @@ export const createAniListProvider = (): AniListClient => {
         role: titleCase(edge.role),
         voiceActors: edge.voiceActors.map(toPerson),
       }));
+    },
+
+    async getEpisodes(id) {
+      const schedule: { episode: number; airingAt: number }[] = [];
+      let streaming: { title?: string | null }[] = [];
+      for (let schedulePage = 1; schedulePage <= SCHEDULE_PAGE_LIMIT; schedulePage += 1) {
+        // oxlint-disable-next-line no-await-in-loop
+        const data = await query<EpisodePage>(
+          `query ($id: Int, $page: Int) { Media(id: $id) { streamingEpisodes { title }
+            airingSchedule(page: $page, perPage: 50) { pageInfo { hasNextPage } nodes { episode airingAt } } } }`,
+          { id, page: schedulePage }
+        );
+        if (data.Media === null) {
+          break;
+        }
+        streaming = data.Media.streamingEpisodes ?? streaming;
+        schedule.push(...data.Media.airingSchedule.nodes);
+        if (!data.Media.airingSchedule.pageInfo.hasNextPage) {
+          break;
+        }
+      }
+      // The schedule includes episodes still to come, so their air dates show too.
+      return mergeAniListEpisodes(schedule, streaming);
     },
 
     async getRecommendations(id) {

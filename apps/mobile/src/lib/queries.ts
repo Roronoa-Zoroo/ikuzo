@@ -223,7 +223,7 @@ export const useGenres = (source: Source) =>
 
 export interface EpisodeList {
   /** Where the list came from, shown as the link on the Episodes tab. */
-  site: "AniDB" | "MyAnimeList";
+  site: "AniDB" | "MyAnimeList" | "AniList";
   url: string;
   episodes: Episode[];
 }
@@ -254,19 +254,48 @@ const fromMyAnimeList = async (malId: number): Promise<EpisodeList | null> => {
     : { episodes, site: "MyAnimeList", url: `https://myanimelist.net/anime/${malId}/episodes` };
 };
 
+const fromAniList = async (anilistId: number): Promise<EpisodeList | null> => {
+  const episodes = (await anilist.getEpisodes?.(anilistId)) ?? [];
+  return episodes.length === 0 ? null : { episodes, site: "AniList", url: `https://anilist.co/anime/${anilistId}` };
+};
+
+/** The first list that arrived, in order of preference; throws only when every site failed. */
+const firstList = (results: PromiseSettledResult<EpisodeList | null>[]): EpisodeList | null => {
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value !== null) {
+      return result.value;
+    }
+  }
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure !== undefined && results.every((result) => result.status === "rejected")) {
+    throw failure.reason;
+  }
+  return null;
+};
+
 /**
- * A show's episode list: AniDB's when this build has an AniDB client (it has specials and
- * lengths), otherwise MyAnimeList's through Jikan. null when neither site lists episodes.
- * Saved for offline like show pages.
+ * A show's episode list. AniDB's when this build has an AniDB client (it has specials and
+ * lengths). Otherwise MyAnimeList (through Jikan) and AniList are asked at the same time and
+ * MyAnimeList's list wins when both answer: if one site is down or blocked, the other covers
+ * it without waiting. null when no site lists episodes. Saved for offline like show pages.
  */
 export const useEpisodes = (anime: AnimeSummary) =>
   useQuery({
     queryFn: async () => {
-      // The id lookup is only needed to find a missing AniDB or MAL id; if it fails, use what we have.
-      const needsLookup = anidb !== undefined || anime.ids.mal === undefined;
-      const ids = needsLookup ? await completeIds(anime.ids).catch(() => anime.ids) : anime.ids;
-      const list = ids.anidb === undefined ? null : await fromAniDb(ids.anidb);
-      return list ?? (ids.mal === undefined ? null : await fromMyAnimeList(ids.mal));
+      const { ids: known } = anime;
+      // The id lookup only fills in missing ids; if it fails, use the ones we have.
+      const needsLookup = anidb !== undefined || known.mal === undefined || known.anilist === undefined;
+      const ids = needsLookup ? await completeIds(known).catch(() => known) : known;
+      const fromAniDbFirst = ids.anidb === undefined ? null : await fromAniDb(ids.anidb).catch(() => null);
+      if (fromAniDbFirst !== null) {
+        return fromAniDbFirst;
+      }
+      return firstList(
+        await Promise.allSettled([
+          ids.mal === undefined ? Promise.resolve(null) : fromMyAnimeList(ids.mal),
+          ids.anilist === undefined ? Promise.resolve(null) : fromAniList(ids.anilist),
+        ])
+      );
     },
     queryKey: ["episodes", anime.source, anime.id],
     staleTime: freshFor(anime),

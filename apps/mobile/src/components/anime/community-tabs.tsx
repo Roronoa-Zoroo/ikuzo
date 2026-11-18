@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { Section } from "@/components/section";
-import { SkeletonLines } from "@/components/skeleton";
+import { SkeletonListCard } from "@/components/skeleton";
 import { ErrorState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
@@ -239,7 +239,7 @@ export const EpisodesTab = ({ anime }: { anime: AnimeDetail }) => {
   if (episodes.isPending) {
     return (
       <View style={styles.tab}>
-        <SkeletonLines lines={8} />
+        <SkeletonListCard />
       </View>
     );
   }

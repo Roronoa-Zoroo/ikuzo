@@ -8,6 +8,7 @@ import { spacing } from "@/lib/theme";
 import { PosterTile } from "./poster-tile";
 import { Section } from "./section";
 import { SkeletonTiles } from "./skeleton";
+import { describeError } from "./states";
 import { AppText } from "./text";
 
 interface AnimeCarouselProps {
@@ -31,7 +32,7 @@ export const AnimeCarousel = ({ title, items, loading = false, error, onViewAll 
       {loading ? <SkeletonTiles /> : null}
       {error === undefined || error === null ? null : (
         <AppText style={styles.status} variant="caption">
-          {error instanceof Error ? error.message : "Could not load"}
+          {describeError(error)}
         </AppText>
       )}
       {!loading && items !== undefined && items.length === 0 ? (

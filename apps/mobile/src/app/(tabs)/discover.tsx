@@ -8,6 +8,7 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from "react-na
 import { AnimeCarousel } from "@/components/anime-carousel";
 import { Header } from "@/components/header";
 import { useSideMenu } from "@/components/side-menu";
+import { describeError } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { capitalize, currentSeason } from "@/lib/format";
@@ -80,7 +81,7 @@ const DiscoverScreen = () => {
   const random = useMutation({
     mutationFn: async () => await getProvider(source).random(),
     onError: (error) => {
-      Alert.alert("Random anime", error.message);
+      Alert.alert("Random anime", describeError(error));
     },
     onSuccess: openAnime,
   });
