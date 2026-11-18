@@ -292,10 +292,10 @@ const SettingsScreen = () => {
           <Row
             detail={
               anidb === undefined
-                ? "Off: set EXPO_PUBLIC_ANIDB_CLIENT to a registered AniDB client"
-                : "On: episode titles load from AniDB"
+                ? "Episode lists come from MyAnimeList"
+                : "Episode lists come from AniDB, or MyAnimeList when AniDB has none"
             }
-            label="AniDB episodes"
+            label="Episodes"
           />
         </Section>
 

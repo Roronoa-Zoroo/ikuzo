@@ -4,12 +4,12 @@ import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { Section } from "@/components/section";
+import { SkeletonLines } from "@/components/skeleton";
 import { ErrorState } from "@/components/states";
 import { AppText } from "@/components/text";
 import { Touchable } from "@/components/touchable";
 import { openLink, youtubeSearchUrl } from "@/lib/links";
-import { useAniDbEpisodes, useAnimeStats, useReviews, useThemes } from "@/lib/queries";
-import { anidb } from "@/lib/sources";
+import { useAnimeStats, useEpisodes, useReviews, useThemes } from "@/lib/queries";
 import { colors, radius, spacing } from "@/lib/theme";
 
 const REVIEW_PREVIEW_LINES = 8;
@@ -235,16 +235,13 @@ export const SongsTab = ({ anime }: { anime: AnimeDetail }) => {
 };
 
 export const EpisodesTab = ({ anime }: { anime: AnimeDetail }) => {
-  const episodes = useAniDbEpisodes(anime);
-  if (anidb === undefined) {
-    return (
-      <AppText style={styles.pad} variant="caption">
-        Episode titles come from AniDB. Set EXPO_PUBLIC_ANIDB_CLIENT to a registered AniDB client to enable them.
-      </AppText>
-    );
-  }
+  const episodes = useEpisodes(anime);
   if (episodes.isPending) {
-    return <Spinner />;
+    return (
+      <View style={styles.tab}>
+        <SkeletonLines lines={8} />
+      </View>
+    );
   }
   if (episodes.isError) {
     return (
@@ -259,31 +256,33 @@ export const EpisodesTab = ({ anime }: { anime: AnimeDetail }) => {
   if (episodes.data === null) {
     return (
       <AppText style={styles.pad} variant="caption">
-        This show is not on AniDB yet.
+        No episode list for this show yet.
       </AppText>
     );
   }
-  const { url } = episodes.data;
+  const { url, site } = episodes.data;
   return (
     <View style={styles.tab}>
       <Section
-        actionLabel="AniDB"
+        actionLabel={site}
         onAction={() => {
           void openLink(url);
         }}
-        title="Episodes"
+        title={`Episodes (${episodes.data.episodes.length})`}
       >
         {episodes.data.episodes.map((episode) => (
-          <View key={episode.id} style={styles.episode}>
+          <View key={episode.key} style={styles.episode}>
             <AppText style={styles.episodeNumber} variant="label">
               {episode.number}
             </AppText>
             <View style={styles.episodeBody}>
-              <AppText>{episode.title ?? "Untitled"}</AppText>
+              <AppText>{episode.title ?? `Episode ${episode.number}`}</AppText>
               <AppText variant="caption">
                 {[
                   episode.airDate,
                   episode.lengthMinutes === undefined ? undefined : `${episode.lengthMinutes} min`,
+                  episode.filler === true ? "Filler" : undefined,
+                  episode.recap === true ? "Recap" : undefined,
                   episode.titleNative,
                 ]
                   .filter(Boolean)

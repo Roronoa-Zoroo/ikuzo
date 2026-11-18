@@ -221,6 +221,7 @@ export const createMalProvider = ({ clientId, jikan, anilist }: MalProviderOptio
       );
     },
 
+    getEpisodes: jikan.getEpisodes,
     async getRecommendations(id) {
       const node = await detail(id);
       return (node.recommendations ?? []).map((item) => malNodeToSummary(item.node));

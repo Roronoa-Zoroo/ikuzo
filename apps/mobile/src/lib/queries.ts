@@ -5,6 +5,7 @@ import type {
   AnimeDetail,
   AnimeSummary,
   BrowseList,
+  Episode,
   NextEpisode,
   Paged,
   SearchParams,
@@ -110,7 +111,7 @@ queryClient.setQueryDefaults(["anime"], {
 for (const key of ["characters", "character", "recommendations", "stats", "themes"]) {
   queryClient.setQueryDefaults([key], { ...OFFLINE, staleTime: FRESH_DEFAULT_MS });
 }
-for (const key of ["anidb", "genres"]) {
+for (const key of ["episodes", "genres"]) {
   queryClient.setQueryDefaults([key], OFFLINE);
 }
 
@@ -220,19 +221,55 @@ export const useGenres = (source: Source) =>
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-/** AniDB episode list, resolved through the cross-database id map. Disabled without an AniDB client. */
-export const useAniDbEpisodes = (anime: AnimeSummary | undefined) =>
+export interface EpisodeList {
+  /** Where the list came from, shown as the link on the Episodes tab. */
+  site: "AniDB" | "MyAnimeList";
+  url: string;
+  episodes: Episode[];
+}
+
+const fromAniDb = async (anidbId: number): Promise<EpisodeList | null> => {
+  if (anidb === undefined) {
+    return null;
+  }
+  const show = await anidb.getAnime(anidbId);
+  return {
+    episodes: show.episodes.map((episode) => ({
+      airDate: episode.airDate,
+      key: String(episode.id),
+      lengthMinutes: episode.lengthMinutes,
+      number: episode.number,
+      title: episode.title,
+      titleNative: episode.titleNative,
+    })),
+    site: "AniDB",
+    url: show.url,
+  };
+};
+
+const fromMyAnimeList = async (malId: number): Promise<EpisodeList | null> => {
+  const episodes = (await getProvider("mal").getEpisodes?.(malId)) ?? [];
+  return episodes.length === 0
+    ? null
+    : { episodes, site: "MyAnimeList", url: `https://myanimelist.net/anime/${malId}/episodes` };
+};
+
+/**
+ * A show's episode list: AniDB's when this build has an AniDB client (it has specials and
+ * lengths), otherwise MyAnimeList's through Jikan. null when neither site lists episodes.
+ * Saved for offline like show pages.
+ */
+export const useEpisodes = (anime: AnimeSummary) =>
   useQuery({
-    enabled: anidb !== undefined && anime !== undefined,
     queryFn: async () => {
-      if (anidb === undefined || anime === undefined) {
-        return null;
-      }
-      const ids = await completeIds(anime.ids);
-      return ids.anidb === undefined ? null : await anidb.getAnime(ids.anidb);
+      // The id lookup is only needed to find a missing AniDB or MAL id; if it fails, use what we have.
+      const needsLookup = anidb !== undefined || anime.ids.mal === undefined;
+      const ids = needsLookup ? await completeIds(anime.ids).catch(() => anime.ids) : anime.ids;
+      const list = ids.anidb === undefined ? null : await fromAniDb(ids.anidb);
+      return list ?? (ids.mal === undefined ? null : await fromMyAnimeList(ids.mal));
     },
-    queryKey: ["anidb", anime?.source, anime?.id],
-    staleTime: DAY_MS,
+    queryKey: ["episodes", anime.source, anime.id],
+    staleTime: freshFor(anime),
   });
 
 export interface Airing {

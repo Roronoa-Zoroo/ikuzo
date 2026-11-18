@@ -9,6 +9,7 @@ import type {
   BrowseList,
   CharacterDetail,
   CharacterRole,
+  Episode,
   MediaFormat,
   Paged,
   Person,
@@ -26,6 +27,32 @@ const WEEKDAY_NAMES: readonly string[] = WEEKDAYS;
 const DURATION_PATTERN = /(?:(?<hours>\d+) hr)?\s*(?:(?<minutes>\d+) min)?/u;
 const MINUTES_PER_HOUR = 60;
 const RANDOM_MAX_ATTEMPTS = 5;
+/** Jikan sends 100 episodes a page; 15 pages covers even the longest-running shows. */
+const EPISODE_PAGE_LIMIT = 15;
+
+interface JikanEpisode {
+  mal_id: number;
+  title?: string | null;
+  title_japanese?: string | null;
+  aired?: string | null;
+  filler?: boolean;
+  recap?: boolean;
+}
+
+interface JikanEpisodePage {
+  data: JikanEpisode[];
+  pagination?: { has_next_page?: boolean };
+}
+
+const toEpisode = (episode: JikanEpisode): Episode => ({
+  airDate: episode.aired?.slice(0, "YYYY-MM-DD".length) ?? undefined,
+  filler: episode.filler ?? false,
+  key: String(episode.mal_id),
+  number: String(episode.mal_id),
+  recap: episode.recap ?? false,
+  title: episode.title ?? undefined,
+  titleNative: episode.title_japanese ?? undefined,
+});
 
 // ── Raw response shapes (only the fields we read) ──────────────────────────
 
@@ -334,6 +361,20 @@ export const createJikanProvider = (): AnimeProvider => {
         role: entry.role,
         voiceActors: (entry.voice_actors ?? []).map((va) => toPerson(va.person, va.language)),
       }));
+    },
+
+    async getEpisodes(id): Promise<Episode[]> {
+      const episodes: Episode[] = [];
+      // Pages must come in order and the rate limiter spaces them out anyway.
+      for (let page = 1; page <= EPISODE_PAGE_LIMIT; page += 1) {
+        // oxlint-disable-next-line no-await-in-loop
+        const result = await get<JikanEpisodePage>(`/anime/${id}/episodes`, { page });
+        episodes.push(...result.data.map(toEpisode));
+        if (result.pagination?.has_next_page !== true) {
+          break;
+        }
+      }
+      return episodes;
     },
 
     async getRecommendations(id) {

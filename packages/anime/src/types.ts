@@ -162,6 +162,22 @@ export interface SearchParams {
   page?: number;
 }
 
+/** One episode in a show's episode list, from AniDB or MyAnimeList. */
+export interface Episode {
+  /** Unique within the list. */
+  key: string;
+  /** "1", or AniDB's "S1" / "C2" for specials and credits. */
+  number: string;
+  title?: string;
+  titleNative?: string;
+  /** ISO date (YYYY-MM-DD) */
+  airDate?: string;
+  lengthMinutes?: number;
+  /** MyAnimeList marks filler and recap episodes. */
+  filler?: boolean;
+  recap?: boolean;
+}
+
 /** Every browse source implements this. Optional members are capabilities a source may lack. */
 export interface AnimeProvider {
   source: Source;
@@ -171,6 +187,8 @@ export interface AnimeProvider {
   getReviews: (id: number, page?: number) => Promise<Paged<Review>>;
   getStats: (id: number) => Promise<AnimeStats>;
   getThemes?: (id: number) => Promise<Themes>;
+  /** The full episode list, when the source has one. */
+  getEpisodes?: (id: number) => Promise<Episode[]>;
   getCharacter: (id: number) => Promise<CharacterDetail>;
   search: (params: SearchParams) => Promise<Paged<AnimeSummary>>;
   browse: (list: BrowseList, page?: number) => Promise<Paged<AnimeSummary>>;
