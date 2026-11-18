@@ -1,5 +1,5 @@
 import { matchTitles } from "@ikuzo/anime/title-match";
-import type { AnimeSummary } from "@ikuzo/anime/types";
+import type { AnimeSummary, Source } from "@ikuzo/anime/types";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
@@ -22,6 +22,8 @@ import { colors, radius, spacing, fontFamily } from "@/lib/theme";
 const DEBOUNCE_MS = 400;
 /** Shorter text only searches your own shows, unless you press the search key (anYme's rule). */
 const ONLINE_MIN_LENGTH = 3;
+
+const SITE_NAMES: Record<Source, string> = { anilist: "AniList", mal: "MyAnimeList" };
 
 const styles = StyleSheet.create({
   heading: {
@@ -95,6 +97,8 @@ const findMine = (
 };
 
 interface OnlineState {
+  /** "AniList" or "MyAnimeList": the site the online search asks. */
+  site: string;
   enabled: boolean;
   /** Short text that will not be searched online until the search key is pressed. */
   waiting: boolean;
@@ -104,7 +108,7 @@ interface OnlineState {
   results?: AnimeSummary[];
 }
 
-/** The rows of the list: "Your shows", then "Online" without the shows already listed above. */
+/** The rows of the list: "Your shows", then "From AniList" (or MyAnimeList) without the shows already listed above. */
 const buildItems = (mine: readonly Mine[], online: OnlineState, lookup: EntryLookupFn): Item[] => {
   const items: Item[] = [];
   if (mine.length > 0) {
@@ -119,14 +123,14 @@ const buildItems = (mine: readonly Mine[], online: OnlineState, lookup: EntryLoo
         key: "n:short",
         kind: "notice",
         retry: false,
-        text: "Keep typing, or press search, to search online",
+        text: `Keep typing, or press search, to search ${online.site}`,
       });
     }
     return items;
   }
-  items.push({ busy: online.fetching, key: "h:online", kind: "heading", title: "Online" });
+  items.push({ busy: online.fetching, key: "h:online", kind: "heading", title: `From ${online.site}` });
   if (online.failed && online.results === undefined) {
-    items.push({ key: "n:error", kind: "notice", retry: true, text: "Could not search online" });
+    items.push({ key: "n:error", kind: "notice", retry: true, text: `Could not reach ${online.site}` });
     return items;
   }
   const listed = new Set(mine.map((item) => item.key));
@@ -140,7 +144,7 @@ const buildItems = (mine: readonly Mine[], online: OnlineState, lookup: EntryLoo
     }
   }
   if (online.results !== undefined && added === 0) {
-    items.push({ key: "n:none", kind: "notice", retry: false, text: "Nothing else found online" });
+    items.push({ key: "n:none", kind: "notice", retry: false, text: `Nothing else found on ${online.site}` });
   }
   return items;
 };
@@ -196,6 +200,7 @@ const SearchScreen = () => {
   const [showFilters, setShowFilters] = useState(params.advanced === "1");
   const typed = text.trim();
   const [onlineText, submit] = useOnlineText(typed);
+  const site = SITE_NAMES[source];
 
   const enabled = onlineText !== "" || hasFilters(filters);
   const results = useSearch(source, { ...filters, query: onlineText === "" ? undefined : onlineText }, enabled);
@@ -209,6 +214,7 @@ const SearchScreen = () => {
       failed: results.isError,
       fetching: results.isFetching,
       results: results.data?.pages.flatMap((page) => page.items),
+      site,
       waiting: typed !== "",
     },
     lookup
@@ -274,7 +280,7 @@ const SearchScreen = () => {
         autoFocus={!showFilters}
         onChangeText={setText}
         onSubmitEditing={submit}
-        placeholder="Search your shows and online…"
+        placeholder={`Search your shows and ${site}…`}
         placeholderTextColor={colors.textSubtle}
         returnKeyType="search"
         style={styles.input}
@@ -282,7 +288,7 @@ const SearchScreen = () => {
       />
       <RowList
         data={items}
-        empty={<EmptyState icon="search-outline" title="Search your shows and online" />}
+        empty={<EmptyState icon="search-outline" title={`Search your shows and ${site}`} />}
         getItemType={(item) => item.kind}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
