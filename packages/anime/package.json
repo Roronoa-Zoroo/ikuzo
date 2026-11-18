@@ -20,7 +20,8 @@
     "./auth-error": "./src/auth-error.ts",
     "./mal": "./src/mal.ts",
     "./sync-queue": "./src/sync-queue.ts",
-    "./account-sync": "./src/account-sync.ts"
+    "./account-sync": "./src/account-sync.ts",
+    "./title-match": "./src/title-match.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

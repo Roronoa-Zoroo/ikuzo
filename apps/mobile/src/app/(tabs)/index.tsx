@@ -1,5 +1,6 @@
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { AnimeRow } from "@/components/anime-row";
 import { Header } from "@/components/header";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/store";
 import type { HomeSort, LibraryEntry, WatchStatus } from "@/lib/store";
 import { pullQuietly } from "@/lib/sync";
-import { colors, radius, spacing, fontFamily } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 /** Most shows refreshed per pull-to-refresh. */
 const REFRESH_LIMIT = 15;
@@ -48,16 +49,6 @@ const sorters: Record<SortKey, (a: LibraryEntry, b: LibraryEntry) => number> = {
 };
 
 const styles = StyleSheet.create({
-  filter: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    color: colors.text,
-    fontFamily,
-    marginBottom: spacing.sm,
-    marginHorizontal: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
   screen: { backgroundColor: colors.background, flex: 1 },
   sheetTitle: { paddingBottom: spacing.md, paddingHorizontal: spacing.xl },
 });
@@ -109,7 +100,7 @@ const StatusList = ({ status, entries, refreshing, onRefresh, onMore }: StatusLi
     empty={
       <EmptyState
         icon="albums-outline"
-        message="Find shows in Discover or search, then add them to your list."
+        message="Tap search to find a show, then add it to your list."
         title={`Nothing in ${WATCH_STATUS_LABELS[status]}`}
       />
     }
@@ -136,7 +127,6 @@ const HomeScreen = () => {
   const { titleLanguage: language, homeSort: sort } = useSettings();
   const openMenu = useSideMenu((state) => state.setOpen);
   const [tab, setTab] = useState<WatchStatus>("watching");
-  const [filter, setFilter] = useState<string | undefined>();
   const [sortOpen, setSortOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<LibraryEntry | undefined>();
   const [editing, setEditing] = useState<LibraryEntry | undefined>();
@@ -151,12 +141,6 @@ const HomeScreen = () => {
   }, [all]);
 
   const lists = useMemo(() => {
-    const needle = filter?.trim().toLowerCase() ?? "";
-    const matches = (entry: LibraryEntry): boolean =>
-      needle === "" ||
-      [entry.anime.title, entry.anime.titleEnglish ?? "", ...entry.anime.synonyms].some((title) =>
-        title.toLowerCase().includes(needle)
-      );
     const result: Record<WatchStatus, LibraryEntry[]> = {
       completed: [],
       dropped: [],
@@ -165,15 +149,13 @@ const HomeScreen = () => {
       watching: [],
     };
     for (const entry of all) {
-      if (matches(entry)) {
-        result[entry.status].push(entry);
-      }
+      result[entry.status].push(entry);
     }
     for (const status of WATCH_STATUSES) {
       result[status].sort(sorters[sort]);
     }
     return result;
-  }, [all, filter, sort]);
+  }, [all, sort]);
 
   return (
     <View style={styles.screen}>
@@ -187,10 +169,11 @@ const HomeScreen = () => {
             },
           },
           {
-            icon: filter === undefined ? "search" : "close",
-            label: "Filter my shows",
+            // Like anYme: one search for your shows and online, a tap away from Home.
+            icon: "search",
+            label: "Search",
             onPress: () => {
-              setFilter(filter === undefined ? "" : undefined);
+              router.push("/search");
             },
           },
           {
@@ -211,17 +194,6 @@ const HomeScreen = () => {
         right={refreshing ? <ActivityIndicator color={colors.accent} /> : null}
         title="Home"
       />
-      {filter === undefined ? null : (
-        <TextInput
-          accessibilityLabel="Filter my shows"
-          autoFocus
-          onChangeText={setFilter}
-          placeholder="Filter my shows…"
-          placeholderTextColor={colors.textSubtle}
-          style={styles.filter}
-          value={filter}
-        />
-      )}
       <PagerTabs
         onChange={setTab}
         renderPage={(status) => (

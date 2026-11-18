@@ -90,6 +90,14 @@ All writes go through the `library` object at the bottom of `lib/store.ts` (`lib
 - `networkMode: "offlineFirst"` shows saved data straight away.
 - `shouldRetry` does not retry requests the server refused.
 
+### Local first, then online: search
+
+`src/app/search.tsx` mixes both kinds of data in one list, the way anYme did:
+
+- **Your shows** are filtered on every key press. The library is already in memory (`useEntries`, `useBookmarks`), so this is a plain function (`findMine`) with no debounce and no loading state. Ranking lives in `@ikuzo/anime/title-match` with unit tests.
+- **Online** results use `useSearch` (an infinite TanStack query) with the text debounced by 400 ms, and only from 3 letters unless you press the search key. The query key holds the text, so going back to an earlier search shows its cached results at once.
+- Both go into one FlashList as typed items (`heading`, `mine`, `online`, `notice`), with `getItemType` so a heading row is never recycled into a show row. Shows already listed under Your shows are left out of Online.
+
 ### Sync
 
 `lib/sync.ts` sends your changes to AniList and MyAnimeList and pulls the account's list. The decisions (what a pull changes, what gets uploaded) are pure functions in `packages/anime/src/account-sync.ts` and `sync-queue.ts`, with unit tests beside them. Keeping them free of storage and network code is what makes them testable.
